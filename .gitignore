@@ -1,14 +1,26 @@
-# Python-generated files
+# Python build & cache
 __pycache__/
 *.py[oc]
 build/
 dist/
 wheels/
 *.egg-info
+.pytest_cache/
 
 # Virtual environments
-.venv
+.venv/
+venv/
 
-#Agent Config
+# Environment and sensitive credentials (DO NOT COMMIT)
 .env
+*.env
+!.env.example
 agent_config.yaml
+!agent_config.yaml.example
+
+# Temporary and test run outputs
+runs/
+checks/
+scratch/
+*.log
+*.tmp

@@ -1,0 +1,14 @@
+# Preconfigured BAND agent seat identities and credentials
+# Replace with the agent UUIDs and keys configured in your Band Desktop instance
+
+gemini_planner:
+  agent_id: "your-planner-agent-uuid-here"
+  api_key: "your-planner-band-api-key-here"
+
+gemini_builder:
+  agent_id: "your-builder-agent-uuid-here"
+  api_key: "your-builder-band-api-key-here"
+
+gemini_reviewer:
+  agent_id: "your-reviewer-agent-uuid-here"
+  api_key: "your-reviewer-band-api-key-here"

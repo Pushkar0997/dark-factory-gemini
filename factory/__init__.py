@@ -1,0 +1,10 @@
+"""Gemini Multi-Agent Software Factory package."""
+
+from factory.config import SEAT_CONFIGS, DEFAULT_PLANNER_MODEL, DEFAULT_BUILDER_MODEL, DEFAULT_REVIEWER_MODEL
+
+__all__ = [
+    "SEAT_CONFIGS",
+    "DEFAULT_PLANNER_MODEL",
+    "DEFAULT_BUILDER_MODEL",
+    "DEFAULT_REVIEWER_MODEL",
+]

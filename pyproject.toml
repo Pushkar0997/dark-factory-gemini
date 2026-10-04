@@ -1,7 +1,7 @@
 [project]
 name = "dark-factory-gemini"
 version = "0.1.0"
-description = "Gemini-powered coding agent for BAND Desktop — built for the WeAreDevelopers x BAND Dark Factory Hackathon"
+description = "Autonomous Gemini Multi-Agent Software Factory for BAND Desktop — WeAreDevelopers x BAND Hackathon"
 readme = "README.md"
 authors = [
     { name = "Pushkar Kumar", email = "pushkarkumar0997@gmail.com" }
@@ -12,8 +12,14 @@ dependencies = [
 ]
 
 [project.scripts]
-dark-factory-gemini = "dark_factory_gemini:main"
+factory-planner = "planner:main"
+factory-builder = "builder:main"
+factory-reviewer = "reviewer:main"
 
 [build-system]
-requires = ["uv_build>=0.12.23,<0.13.0"]
-build-backend = "uv_build"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["factory"]
+
