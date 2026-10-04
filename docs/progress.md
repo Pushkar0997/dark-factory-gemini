@@ -12,7 +12,9 @@ This document provides a truthful, unembellished breakdown of current project st
   └── Generic mandates created with exact Harness & Model declarations
   └── FACTORY.md and technical documentation authored
   └── Model management centralized with strict/fallback modes
+  └── Resilient Google ADK adapter implemented (exponential backoff, jitter, pacing)
   └── Scaffolding created for stage-1 through stage-4
+  └── Teammate handoff guide authored (docs/teammate_handoff.md)
 
 [Phase 2: Pre-Flight Rehearsal on Toy Track] ──► PENDING OPERATOR RUN
   └── Launch Planner, Builder, Reviewer against Band Desktop
@@ -40,7 +42,8 @@ This document provides a truthful, unembellished breakdown of current project st
 | **Repository Layout** | `VERIFIED` | Complies with official `check.py` requirements (`README.md`, `FACTORY.md`, `mandates/`, `stage-1` to `stage-4`). |
 | **Generic Mandates** | `VERIFIED` | Zero competition track vocabulary found across all mandate files (`check.py` mandate audit passed). |
 | **Model & Harness Declared** | `VERIFIED` | Mandates contain `Harness: Google ADK` and verified `Model:` identifiers. |
-| **Secrets Security** | `VERIFIED` | Zero credentials committed in Git history. `.env` and `agent_config.yaml` are strictly git-ignored. |
+| **Resilient Rate-Limit Handling** | `VERIFIED` | `ResilientGoogleADKAdapter` in `factory/adapter.py` preserves model identity across 429/503 retries. |
+| **Secrets Security** | `VERIFIED` | Zero credentials committed in Git history. `.env` and `agent_config.yaml` are strictly gitignored. |
 | **Stage Implementations** | `PLACEHOLDER` | **Not yet generated.** Stage folders contain honest execution placeholders. No fake code or synthetic tests exist. |
 | **Room Session Evidence** | `NOT YET VERIFIED` | `room.json` does not exist yet. Will be exported directly from Band Console after the live judged run. |
 | **Eligibility Gate 1** | `NOT YET VERIFIED` | Roster and mandates pass structural checks, but require live Band room participants to verify matching seat slugs. |

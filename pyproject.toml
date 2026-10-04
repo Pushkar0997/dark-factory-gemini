@@ -12,9 +12,10 @@ dependencies = [
 ]
 
 [project.scripts]
-factory-planner = "planner:main"
-factory-builder = "builder:main"
-factory-reviewer = "reviewer:main"
+factory-planner = "factory.planner:main"
+factory-builder = "factory.builder:main"
+factory-reviewer = "factory.reviewer:main"
+
 
 [build-system]
 requires = ["hatchling"]
