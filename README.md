@@ -1,15 +1,18 @@
-# 🏭 Dark Factory — Gemini Agent
+# 🏭 Dark Factory — Gemini Multi-Agent Software Factory
 
-> A Gemini-powered coding agent for [BAND Desktop](https://band.ai), built for the **[WeAreDevelopers x BAND: Dark Factory Hackathon](https://lablab.ai/ai-hackathons/wearedevelopers-hackathon)**.
+> A multi-agent software factory powered by Google Gemini and [BAND Desktop](https://band.ai), built for the **[WeAreDevelopers x BAND: Dark Factory Hackathon](https://lablab.ai/ai-hackathons/wearedevelopers-hackathon)**.
 
 ## What is this?
 
-This is a software-factory agent that lives inside BAND Desktop. When you message it, it uses Google's Gemini models (via the [Google ADK](https://github.com/google/adk-python)) to plan work, write code, and check its own results — all through the BAND collaboration platform.
+This is a complete software factory trio that operates in BAND Desktop rooms:
+- 📋 **GeminiPlanner (`planner.py`)**: Breaks down requests into structured, executable steps, assigns tasks, and coordinates workflow without writing code directly.
+- 🔨 **GeminiBuilder (`builder.py`)**: Implements clean, maintainable code step-by-step according to the Planner's specifications.
+- 🔍 **GeminiReviewer (`reviewer.py`)**: Reviews generated code, flags bugs, performance issues, and edge cases, and approves or requests revisions.
 
 Built with:
-- **[BAND SDK](https://pypi.org/project/band-sdk/)** — agent framework for BAND Desktop
+- **[BAND SDK](https://pypi.org/project/band-sdk/)** — Agent framework & multi-agent room orchestration
 - **[Google ADK](https://github.com/google/adk-python)** — Agent Development Kit for Gemini models
-- **Gemini 3.8 Flash** — fast, capable reasoning (with automatic fallback to other models)
+- **Gemini Models** — Dynamic model selection with automatic fallback on 404 / 503 / UNAVAILABLE errors
 
 ## 🚀 Quick Start
 
@@ -17,14 +20,14 @@ Built with:
 
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/) package manager
-- A [BAND](https://band.ai) account with an agent configured
+- A [BAND](https://band.ai) account with 3 agents configured (`gemini_planner`, `gemini_builder`, `gemini_reviewer`)
 - A [Google AI API key](https://aistudio.google.com/apikey)
 
 ### Setup
 
 1. **Clone the repo**
    ```bash
-   git clone https://github.com/<your-username>/dark-factory-gemini.git
+   git clone https://github.com/Pushkar0997/dark-factory-gemini.git
    cd dark-factory-gemini
    ```
 
@@ -35,46 +38,64 @@ Built with:
 
 3. **Configure secrets**
 
-   Create a `.env` file (already in `.gitignore`):
+   Create a `.env` file (git-ignored):
    ```env
    BAND_REST_URL=https://app.band.ai
    BAND_WS_URL=wss://app.band.ai/api/v1/socket/websocket
    GOOGLE_API_KEY=your-google-api-key-here
    ```
 
-   Create an `agent_config.yaml` (also in `.gitignore`):
+   Create an `agent_config.yaml` (git-ignored):
    ```yaml
+   gemini_planner:
+     agent_id: "your-planner-agent-uuid"
+     api_key: "your-planner-band-api-key"
+
    gemini_builder:
-     agent_id: "your-agent-uuid"
-     api_key: "your-band-api-key"
+     agent_id: "your-builder-agent-uuid"
+     api_key: "your-builder-band-api-key"
+
+   gemini_reviewer:
+     agent_id: "your-reviewer-agent-uuid"
+     api_key: "your-reviewer-band-api-key"
    ```
 
-4. **Run the agent**
+4. **Run the factory agents** (in separate terminal tabs or processes)
+
    ```bash
-   uv run python agent.py
+   # Terminal 1: Planner
+   uv run python planner.py
+
+   # Terminal 2: Builder
+   uv run python builder.py
+
+   # Terminal 3: Reviewer
+   uv run python reviewer.py
    ```
 
-### Model Selection
+### Model Selection & Fallback
 
-The default model is `gemini-3.8-flash`. You can choose a different one:
+Each agent supports custom model flags and built-in fallback lists:
 
 ```bash
-uv run python agent.py --model gemini-3.8-pro
-uv run python agent.py -m gemini-2.5-pro
+uv run python planner.py --model gemini-3.6-flash
+uv run python builder.py --model gemini-3.5-flash
+uv run python reviewer.py --model gemini-3.5-flash-lite
 ```
 
-If the chosen model is unavailable, the agent automatically falls back through:
-`gemini-3.8-flash` → `gemini-3.8-pro` → `gemini-2.5-pro` → `gemini-2.5-flash`
+If a chosen model is unavailable or rate-limited, the agent logs a warning and automatically attempts the next fallback in its hierarchy.
 
 ## 📁 Project Structure
 
 ```
 dark-factory-gemini/
-├── agent.py              # Main entry point — agent startup & model fallback
-├── agent_config.yaml     # BAND agent credentials (git-ignored)
-├── .env                  # API keys & env vars (git-ignored)
+├── planner.py            # GeminiPlanner agent (planning & coordination)
+├── builder.py            # GeminiBuilder agent (code implementation)
+├── reviewer.py           # GeminiReviewer agent (code review & QA)
+├── agent_config.yaml     # BAND credentials for all 3 agents (git-ignored)
+├── .env                  # API keys & endpoints (git-ignored)
 ├── pyproject.toml        # Project metadata & dependencies
-└── src/                  # Additional source modules
+└── src/                  # Package sources
 ```
 
 ## 🏆 Hackathon
