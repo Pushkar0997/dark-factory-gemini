@@ -61,8 +61,8 @@ def main(default_role: str | None = None) -> None:
         raise SystemExit(
             f"In lineup {lineup.name!r} the {args.role} is {seat.name!r} on {seat.harness}: "
             "Band Desktop runs that seat, not this script (see scripts/apply_lineup.py).")
-    if not seat.config_key:
-        raise SystemExit(f"{seat.name} has no config_key in factory/lineups.toml")
+    if not seat.agent_entry:
+        raise SystemExit(f"{seat.name} has no agent_entry in factory/lineups.toml")
 
     mandate_path = Path(args.mandates) / seat.mandate_file
     if not mandate_path.is_file():
@@ -85,7 +85,7 @@ def main(default_role: str | None = None) -> None:
 
     model = choose_model(declared, args.model, args.allow_fallback, args.skip_preflight)
     logger.info("Starting %s as %s (%s) on %s", seat.name, args.role, lineup.name, model)
-    asyncio.run(run_seat(agent_key=seat.config_key, model=model,
+    asyncio.run(run_seat(agent_key=seat.agent_entry, model=model,
                          mandate_text=mandate_text, tools=tools))
 
 

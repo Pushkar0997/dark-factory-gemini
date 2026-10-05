@@ -9,8 +9,9 @@
 Factory self-checks:
   1. unit tests (tests/)                                 — retry, backoff, sandbox, rendering
   2. every lineup renders mandates with real Harness/Model lines and no placeholders
-  3. this repo's mandates/ equal one lineup's rendering exactly (no hand drift), and
-     contain none of the official track vocabulary (the organisers' own list)
+  3. this repo's mandates/ equal one lineup's rendering exactly (no hand drift), contain
+     none of the official track vocabulary, and tracked files pass the official
+     credential scan (both use the organisers' own code from the kickoff checkout)
   4. no stage-N/ folders committed in the factory repo by hand
   5. local secrets files (.env, agent_config.yaml) are git-ignored and untracked
 
@@ -81,6 +82,14 @@ def check_lineups_and_mandates() -> None:
             for n, line in enumerate(text.splitlines(), 1):
                 hits += [f"{fname}:{n} {term} ({track})" for _k, term in vocabulary.terms_in(line) if term in banned]
     record("mandates use no track vocabulary (both tracks)", not hits, "; ".join(hits[:10]))
+
+    # The organisers' credential scan, on tracked files only (local .env and
+    # agent_config.yaml are git-ignored and never reach a clone).
+    from harness import check as official  # type: ignore
+
+    tracked = set(git("ls-files").splitlines())
+    flagged = [p for p in official._credentials(ROOT) if p.split(" ", 1)[0] in tracked]
+    record("official credential scan (tracked files)", not flagged, "; ".join(flagged[:5]))
 
 
 def check_hygiene() -> None:

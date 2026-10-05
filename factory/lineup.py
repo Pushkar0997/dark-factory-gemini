@@ -28,7 +28,7 @@ class Seat:
     harness: str
     model: str
     band_as: str | None = None
-    config_key: str | None = None
+    agent_entry: str | None = None
 
     @property
     def mandate_file(self) -> str:

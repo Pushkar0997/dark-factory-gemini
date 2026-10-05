@@ -13,11 +13,11 @@
 #              (this repo's Python runner, `factory-seat`)
 #   model    = the exact model id the seat runs
 #   band_as  = owner/handle used with the `band` CLI (Claude Code seats only)
-#   config_key = entry in agent_config.yaml (Google ADK seats only)
+#   agent_entry = entry in agent_config.yaml (Google ADK seats only)
 
 [lineups.hybrid]
 description = "Gemini coordinator (Google ADK, messaging + read-only workspace) with Claude Code implementer and reviewer. Recommended: the seats that write and verify code run in a full coding harness; planning runs on a cheaper, independent model family."
-coordinator = { name = "gemini_planner", handle = "gemini-planner", harness = "Google ADK (band-sdk)", model = "gemini-3.8-flash", config_key = "gemini_planner" }
+coordinator = { name = "gemini_planner", handle = "gemini-planner", harness = "Google ADK (band-sdk)", model = "gemini-3.8-flash", agent_entry = "gemini_planner" }
 implementer = { name = "Implementer", handle = "implementer", harness = "Claude Code", model = "claude-sonnet-5-5", band_as = "amaansayydd/implementer" }
 reviewer    = { name = "Reviewer", handle = "reviewer", harness = "Claude Code", model = "claude-sonnet-5-5", band_as = "amaansayydd/reviewer" }
 
@@ -29,6 +29,6 @@ reviewer    = { name = "Reviewer", handle = "reviewer", harness = "Claude Code",
 
 [lineups.gemini]
 description = "All three seats on Google ADK via this repo's runner. The implementer and reviewer get the sandboxed workspace tools (files + shell) from factory/workspace_tools.py. Needs three Band agents created for SDK use and a Gemini key. Experimental: not rehearsed end to end."
-coordinator = { name = "gemini_planner", handle = "gemini-planner", harness = "Google ADK (band-sdk)", model = "gemini-3.8-flash", config_key = "gemini_planner" }
-implementer = { name = "gemini_builder", handle = "gemini-builder", harness = "Google ADK (band-sdk)", model = "gemini-3.8-flash", config_key = "gemini_builder" }
-reviewer    = { name = "gemini_reviewer", handle = "gemini-reviewer", harness = "Google ADK (band-sdk)", model = "gemini-3.8-flash", config_key = "gemini_reviewer" }
+coordinator = { name = "gemini_planner", handle = "gemini-planner", harness = "Google ADK (band-sdk)", model = "gemini-3.8-flash", agent_entry = "gemini_planner" }
+implementer = { name = "gemini_builder", handle = "gemini-builder", harness = "Google ADK (band-sdk)", model = "gemini-3.8-flash", agent_entry = "gemini_builder" }
+reviewer    = { name = "gemini_reviewer", handle = "gemini-reviewer", harness = "Google ADK (band-sdk)", model = "gemini-3.8-flash", agent_entry = "gemini_reviewer" }
