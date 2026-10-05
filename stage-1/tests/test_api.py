@@ -313,6 +313,44 @@ def export_import():
     err(call("GET", "/reservations", token=ada), 401, "unauthenticated")
 
 
+@test
+def review_cycle1():
+    # D1: calendar edges never 5xx
+    reset([restaurant("r_b", opens="00:00", closes="23:30"),
+           restaurant("r_ny", tz="America/New_York", opens="00:00", closes="23:30")])
+    ada = login()
+    for rid, d, hhmm in (("r_b", "0001-01-01", "00:30"), ("r_ny", "9999-12-31", "22:00"),
+                         ("r_b", "9999-12-31", "22:00"), ("r_ny", "0001-01-01", "00:00")):
+        s = book(ada, rid=rid, d=d, hhmm=hhmm)
+        assert s[0] in (201, 422) and (s[0] == 201 or s[1]["error"]["code"] == "validation_failed"), s
+        a = call("GET", "/availability?restaurant_id=%s&date=%s&party_size=2" % (rid, d))
+        assert a[0] in (200, 422), a
+    ok = book(ada, rid="r_b", hhmm="19:00")[1]
+    err(call("PATCH", "/reservations/" + ok["reference"], {"starts_at_local": "0001-01-01T00:30"}, ada),
+        422, "validation_failed")
+    # D2: HEAD / OPTIONS / unknown methods give JSON, never 5xx
+    import http.client
+    from urllib.parse import urlsplit
+    u = urlsplit(BASE)
+    for m in ("HEAD", "OPTIONS", "TRACE", "FOO"):
+        c = http.client.HTTPConnection(u.hostname, u.port, timeout=5)
+        c.request(m, "/health")
+        r = c.getresponse()
+        body = r.read()
+        assert r.status < 500, (m, r.status)
+        if m == "HEAD":
+            assert r.status == 200 and body == b"", (m, body)
+        else:
+            assert json.loads(body)["error"]["code"], (m, body)
+        c.close()
+    # D3: non-integer party_size rejected even when numerically equal
+    r4 = book(ada, rid="r_b", table="t_2", hhmm="21:00", party=4)[1]
+    err(call("PATCH", "/reservations/" + r4["reference"], {"party_size": 4.0}, ada), 422, "validation_failed")
+    err(call("POST", "/reservation-moves", {"moves": [{"reference": r4["reference"], "party_size": 4.0}]}, ada, k()),
+        422, "validation_failed")
+    assert call("GET", "/reservations/" + r4["reference"], token=ada)[1] == r4
+
+
 if __name__ == "__main__":
     failed = 0
     for t in TESTS:

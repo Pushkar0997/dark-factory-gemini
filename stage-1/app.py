@@ -184,6 +184,13 @@ def hours_for(rest, date):
 
 def check_slot(rest, naive):
     """Validate a local start time against opening hours, grid and DST; return start UTC."""
+    try:
+        return _check_slot(rest, naive)
+    except (OverflowError, ValueError):
+        raise bad("validation_failed", "local time is out of the supported range")
+
+
+def _check_slot(rest, naive):
     tz = tz_of(rest)
     start = resolve_local(naive, tz)
     if start is None:
@@ -198,6 +205,7 @@ def check_slot(rest, naive):
             close_utc = local_minutes_to_naive(naive.date(), c).replace(tzinfo=tz, fold=0).astimezone(UTC)
             if start + dur > close_utc:
                 raise bad("outside_opening_hours", "reservation would end after closing")
+            (start + dur).astimezone(tz)  # ends_at must be representable
             return start
     raise bad("outside_opening_hours", "outside opening hours")
 
@@ -312,6 +320,7 @@ def build_from_fixture(fx):
             rest = st["restaurants"][b["restaurant_id"]]
             naive = parse_local(b["starts_at_local"])
             start = naive.replace(tzinfo=tz_of(rest), fold=0).astimezone(UTC)
+            (start + dt.timedelta(minutes=rest["reservation_duration_minutes"])).astimezone(tz_of(rest))
             ref = b.get("reference")
             if ref is None:
                 ref = new_reference(st)
@@ -503,36 +512,43 @@ def h_availability(q):
         rest = STATE["restaurants"].get(q["restaurant_id"])
         if rest is None:
             raise not_found("unknown restaurant")
-        tz = tz_of(rest)
-        dur = dt.timedelta(minutes=rest["reservation_duration_minutes"])
-        busy = {}
-        for rec in STATE["reservations"].values():
-            if rec["status"] == "confirmed" and rec["restaurant_id"] == rest["id"]:
-                busy.setdefault(rec["table_id"], []).append(interval(STATE, rec))
-        slots, seen = [], set()
-        for h in hours_for(rest, date):
-            o, c = parse_hhmm(h["opens"]), parse_hhmm(h["closes"])
-            close_utc = local_minutes_to_naive(date, c).replace(tzinfo=tz, fold=0).astimezone(UTC)
-            m = o
-            while m < c:
-                naive = local_minutes_to_naive(date, m)
-                m += rest["slot_minutes"]
-                if naive.date() != date:
-                    break
-                start = resolve_local(naive, tz)
-                if start is None or start + dur > close_utc or naive in seen:
-                    continue
-                seen.add(naive)
-                iv = (start, start + dur)
-                avail = [t["id"] for t in rest["tables"]
-                         if t["capacity"] >= party
-                         and not any(overlaps(iv, b) for b in busy.get(t["id"], ()))]
-                slots.append({"starts_at_local": fmt_local(naive),
-                              "starts_at": iso(start.astimezone(tz)),
-                              "available_table_ids": avail})
-        slots.sort(key=lambda s: s["starts_at_local"])
-        return 200, {"restaurant_id": rest["id"], "date": date.isoformat(),
-                     "timezone": rest["timezone"], "slots": slots}
+        try:
+            return _availability(rest, date, party)
+        except (OverflowError, ValueError):
+            raise bad("validation_failed", "date is out of the supported range")
+
+
+def _availability(rest, date, party):
+    tz = tz_of(rest)
+    dur = dt.timedelta(minutes=rest["reservation_duration_minutes"])
+    busy = {}
+    for rec in STATE["reservations"].values():
+        if rec["status"] == "confirmed" and rec["restaurant_id"] == rest["id"]:
+            busy.setdefault(rec["table_id"], []).append(interval(STATE, rec))
+    slots, seen = [], set()
+    for h in hours_for(rest, date):
+        o, c = parse_hhmm(h["opens"]), parse_hhmm(h["closes"])
+        close_utc = local_minutes_to_naive(date, c).replace(tzinfo=tz, fold=0).astimezone(UTC)
+        m = o
+        while m < c:
+            naive = local_minutes_to_naive(date, m)
+            m += rest["slot_minutes"]
+            if naive.date() != date:
+                break
+            start = resolve_local(naive, tz)
+            if start is None or start + dur > close_utc or naive in seen:
+                continue
+            seen.add(naive)
+            iv = (start, start + dur)
+            avail = [t["id"] for t in rest["tables"]
+                     if t["capacity"] >= party
+                     and not any(overlaps(iv, b) for b in busy.get(t["id"], ()))]
+            slots.append({"starts_at_local": fmt_local(naive),
+                          "starts_at": iso(start.astimezone(tz)),
+                          "available_table_ids": avail})
+    slots.sort(key=lambda s: s["starts_at_local"])
+    return 200, {"restaurant_id": rest["id"], "date": date.isoformat(),
+                 "timezone": rest["timezone"], "slots": slots}
 
 
 def h_create(uid, body):
@@ -619,6 +635,8 @@ def plan_change(rec, fields):
     table = fields.get("table_id", rec["table_id"])
     local = fields.get("starts_at_local", rec["starts_at_local"])
     party = fields.get("party_size", rec["party_size"])
+    if "party_size" in fields:
+        check_party(party)
     if (table, local, party) == (rec["table_id"], rec["starts_at_local"], rec["party_size"]) \
             and not isinstance(party, bool):
         return None
@@ -735,12 +753,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def send(self, status, obj=None):
         body = b"" if obj is None else json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        head = getattr(self, "command", None) == "HEAD"
         self.send_response(status)
         if obj is not None:
             self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        if body:
+        if body and not head:
             self.wfile.write(body)
 
     def read_body(self):
@@ -771,6 +790,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def route(self, method, path, q, raw):
         seg = [unquote(s) for s in path.split("/")[1:]]
+        if method == "HEAD":
+            method = "GET"
         h = self.headers
         if method == "GET":
             if path == "/health":
@@ -818,6 +839,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_PATCH(self):
         self.handle_any("PATCH")
+
+    def do_HEAD(self):
+        self.handle_any("HEAD")
+
+    def do_OPTIONS(self):
+        self.handle_any("OPTIONS")
+
+    def send_error(self, code, message=None, explain=None):
+        status = 404 if code in (501, 405) else (code if 400 <= code < 500 else 400)
+        err_code = "not_found" if status == 404 else "malformed_request"
+        try:
+            self.close_connection = True
+            self.send(status, {"error": {"code": err_code, "message": message or "bad request"}})
+        except Exception:
+            pass
 
     def do_PUT(self):
         self.handle_any("PUT")
