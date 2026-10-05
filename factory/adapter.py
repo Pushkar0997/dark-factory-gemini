@@ -1,4 +1,4 @@
-"""Google ADK Adapter creation and resilient agent runtime management."""
+"""Google ADK seat runtime: a rate-limit-resilient adapter and the seat launcher."""
 
 from __future__ import annotations
 
@@ -6,84 +6,116 @@ import asyncio
 import logging
 import os
 import random
+import re
 import time
 import uuid
-from typing import Any, Sequence
+from typing import Any
 
 from band import Agent
 from band.adapters.google_adk import (
     GoogleADKAdapter,
     GoogleADKAdapterConfig,
-    _require_adk,
     _APP_NAME,
+    _require_adk,
 )
 from band.config import load_agent_config
 from band.converters.google_adk import GoogleADKMessages
 from band.core.protocols import GENERIC_PROVIDER_FAILURE_MESSAGE, AgentToolsProtocol
 from band.core.types import Emit, PlatformMessage, TurnUsage
+from band.runtime.custom_tools import CustomToolDef
 from band_sdk_core import AgentFailure
 
-from factory.config import FactorySeatConfig, MODEL_CANDIDATES
+from factory.config import MODEL_CANDIDATES, RetryPolicy
 
 logger = logging.getLogger(__name__)
 
+_TRANSIENT_CODES = {408, 429, 500, 502, 503, 504}
+_PERMANENT_CODES = {400, 401, 403, 404}
+_TRANSIENT_TEXT = (
+    "resource_exhausted", "resourceexhausted", "rate limit", "ratelimit", "too many requests",
+    "quota", "unavailable", "overloaded", "deadline exceeded", "deadlineexceeded",
+    "timed out", "timeout", "connection reset", "connection aborted", "temporary failure",
+    "internal error", "server disconnected",
+)
+_RETRY_AFTER = re.compile(r"(?i)retry(?:delay|[ _-]?in|[ _-]?after)?\W{0,4}(\d+(?:\.\d+)?)\s*s")
 
-def is_transient_error(exc: Exception) -> bool:
-    """Determine whether an exception represents a rate limit or transient service error."""
-    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
-    if code in (429, 500, 502, 503, 504):
+
+def _status_code(exc: BaseException) -> int | None:
+    for attr in ("code", "status_code", "status"):
+        value = getattr(exc, attr, None)
+        if isinstance(value, int):
+            return value
+    match = re.match(r"\s*(\d{3})\b", str(exc))
+    return int(match.group(1)) if match else None
+
+
+def is_transient_error(exc: BaseException) -> bool:
+    """True for errors worth retrying: rate limits, overload, 5xx and network timeouts."""
+    code = _status_code(exc)
+    if code in _TRANSIENT_CODES:
         return True
+    if code in _PERMANENT_CODES:
+        return False
+    text = f"{type(exc).__name__} {exc}".lower()
+    return any(marker in text for marker in _TRANSIENT_TEXT)
 
-    exc_str = str(exc).lower()
-    transient_indicators = (
-        "429",
-        "resource_exhausted",
-        "resourceexhausted",
-        "rate limit",
-        "ratelimit",
-        "quota",
-        "503",
-        "unavailable",
-        "service unavailable",
-        "overloaded",
-        "deadline exceeded",
-        "deadlineexceeded",
-        "timeout",
-        "timed out",
-        "connection reset",
-        "temporary failure",
-    )
-    return any(indicator in exc_str for indicator in transient_indicators)
+
+def retry_after_seconds(exc: BaseException) -> float | None:
+    """The server's suggested wait, when the error carries one (Gemini sends `retryDelay`)."""
+    match = _RETRY_AFTER.search(str(exc))
+    return float(match.group(1)) if match else None
 
 
 class ResilientGoogleADKAdapter(GoogleADKAdapter):
-    """Google ADK Adapter with rate-limit pacing, exponential backoff, and retry handling.
+    """GoogleADKAdapter plus turn pacing, bounded retry with jittered backoff, and
+    duplicate-safe resumption.
 
-    Guarantees:
-    - Strictly preserves the declared model identity across all retry attempts.
-    - Absorbs transient 429 (ResourceExhausted) and 503 errors without dropping Band turns.
-    - Implements inter-turn pacing to avoid burst rate-limit triggers on free tier quotas.
+    - The model never changes between attempts: retries reuse ``config.model``.
+    - A turn that already performed side effects (sent a message, wrote a file, ran a
+      command) before failing is not replayed blindly. The next attempt is told exactly
+      which tool calls already completed and asked to continue from there, so a 429 in the
+      middle of a turn does not post the same handoff twice.
+    - When every attempt fails, the failure is reported to the room (``send_failure``) and
+      logged with the room id, seat and model; it is never swallowed.
     """
 
     def __init__(
         self,
         config: GoogleADKAdapterConfig,
-        max_retries: int | None = None,
-        initial_backoff: float | None = None,
-        backoff_factor: float = 2.0,
-        max_backoff: float | None = None,
-        turn_delay: float | None = None,
-        jitter_max: float = 2.0,
+        *,
+        policy: RetryPolicy | None = None,
+        additional_tools: list[CustomToolDef] | None = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(config=config, **kwargs)
-        self.max_retries = max_retries or int(os.getenv("FACTORY_MAX_RETRIES", "5"))
-        self.initial_backoff = initial_backoff or float(os.getenv("FACTORY_INITIAL_BACKOFF", "4.0"))
-        self.backoff_factor = backoff_factor
-        self.max_backoff = max_backoff or float(os.getenv("FACTORY_MAX_BACKOFF", "60.0"))
-        self.turn_delay = turn_delay or float(os.getenv("FACTORY_TURN_DELAY", "1.5"))
-        self.jitter_max = jitter_max
-        self._last_turn_completed_at: float = 0.0
+        super().__init__(config=config, additional_tools=additional_tools, **kwargs)
+        self.policy = policy or RetryPolicy.from_env()
+        self._last_turn_completed_at = 0.0
+
+    async def _pace(self, room_id: str) -> None:
+        if self.policy.turn_delay <= 0 or not self._last_turn_completed_at:
+            return
+        wait = self.policy.turn_delay - (time.monotonic() - self._last_turn_completed_at)
+        if wait > 0:
+            logger.debug("Room %s [%s]: pacing %.2fs", room_id, self.agent_name, wait)
+            await asyncio.sleep(wait)
+
+    def _turn_text(self, room_id: str, msg: PlatformMessage, participants_msg: str | None,
+                   contacts_msg: str | None) -> str:
+        parts: list[str] = []
+        windowed = self._room_history[room_id][-self.config.max_history_messages:]
+        transcript = self._format_history_transcript(windowed) if windowed else ""
+        if transcript:
+            if len(transcript) > self.config.max_transcript_chars:
+                transcript = transcript[-self.config.max_transcript_chars:]
+                transcript = transcript[transcript.find("\n") + 1:]
+                logger.warning("Room %s: transcript truncated to %d chars", room_id, len(transcript))
+            parts.append(f"[Previous conversation context]\n{transcript}\n[End of previous context]\n")
+        if participants_msg:
+            parts.append(f"[System]: {participants_msg}")
+        if contacts_msg:
+            parts.append(f"[System]: {contacts_msg}")
+        parts.append(msg.format_for_llm())
+        return "\n".join(parts)
 
     async def on_message(
         self,
@@ -96,234 +128,142 @@ class ResilientGoogleADKAdapter(GoogleADKAdapter):
         is_session_bootstrap: bool,
         room_id: str,
     ) -> None:
-        """Handle incoming message with inter-turn pacing and transient backoff retries."""
         _, _, _, types = _require_adk()
+        await self._pace(room_id)
 
-        logger.debug("Handling message %s in room %s", msg.id, room_id)
-
-        # 1. Inter-turn pacing: throttle burst API calls across consecutive turns
-        if self.turn_delay > 0 and self._last_turn_completed_at > 0:
-            elapsed = time.monotonic() - self._last_turn_completed_at
-            if elapsed < self.turn_delay:
-                wait_time = self.turn_delay - elapsed
-                logger.debug(
-                    "Room %s [%s]: Pacing throttle sleeping for %.2fs",
-                    room_id,
-                    self.agent_name,
-                    wait_time,
-                )
-                await asyncio.sleep(wait_time)
-
-        # 2. Seed or maintain room history
         if is_session_bootstrap:
             self._room_history[room_id] = list(history) if history else []
-            if history:
-                logger.info(
-                    "Room %s: Loaded %s historical messages",
-                    room_id,
-                    len(history),
+        else:
+            self._room_history.setdefault(room_id, [])
+
+        base_text = self._turn_text(room_id, msg, participants_msg, contacts_msg)
+        completed: list[str] = []   # tool calls that finished, across all attempts
+        final_text = ""
+
+        for attempt in range(1, self.policy.max_attempts + 1):
+            text = base_text
+            if completed:
+                text += (
+                    "\n\n[System]: Your previous attempt at this turn was interrupted by a "
+                    "transient model error AFTER these tool calls had already completed: "
+                    + "; ".join(completed)
+                    + ". Do not repeat them (the messages were delivered and the files were "
+                    "written). Continue from where you stopped."
                 )
-        elif room_id not in self._room_history:
-            self._room_history[room_id] = []
-
-        # 3. Construct user message content with windowed transcript
-        parts: list[str] = []
-        room_history = self._room_history[room_id]
-        if room_history:
-            windowed = room_history[-self.config.max_history_messages :]
-            transcript = self._format_history_transcript(windowed)
-            if transcript:
-                if len(transcript) > self.config.max_transcript_chars:
-                    original_len = len(transcript)
-                    transcript = transcript[-self.config.max_transcript_chars :]
-                    nl = transcript.find("\n")
-                    if nl != -1:
-                        transcript = transcript[nl + 1 :]
-                    logger.warning(
-                        "Room %s: Transcript truncated from %d to %d chars to stay within token budget",
-                        room_id,
-                        original_len,
-                        len(transcript),
-                    )
-                parts.append(
-                    f"[Previous conversation context]\n{transcript}\n"
-                    f"[End of previous context]\n\n"
-                )
-
-        if participants_msg:
-            parts.append(f"[System]: {participants_msg}")
-            logger.info("Room %s: Participants updated", room_id)
-
-        if contacts_msg:
-            parts.append(f"[System]: {contacts_msg}")
-            logger.info("Room %s: Contacts broadcast received", room_id)
-
-        parts.append(msg.format_for_llm())
-        user_content = types.Content(
-            role="user",
-            parts=[types.Part.from_text(text="\n".join(parts))],
-        )
-
-        logger.info(
-            "Room %s: Running resilient ADK agent (seat='%s', model='%s', max_retries=%d, bootstrap=%s, history_size=%s)",
-            room_id,
-            self.agent_name,
-            self.config.model,
-            self.max_retries,
-            is_session_bootstrap,
-            len(room_history),
-        )
-
-        # 4. Turn execution with retry and exponential backoff
-        for attempt in range(1, self.max_retries + 1):
+            content = types.Content(role="user", parts=[types.Part.from_text(text=text)])
             runner: Any = None
-            turn_usage = TurnUsage()
-            final_response_text = ""
+            usage = TurnUsage()
             try:
                 runner = self._create_runner(tools)
                 session_id = str(uuid.uuid4())
                 self._room_sessions[room_id] = session_id
                 await runner.session_service.create_session(
-                    app_name=_APP_NAME,
-                    user_id=room_id,
-                    session_id=session_id,
-                )
-
+                    app_name=_APP_NAME, user_id=room_id, session_id=session_id)
                 async for event in runner.run_async(
-                    user_id=room_id,
-                    session_id=session_id,
-                    new_message=user_content,
-                ):
+                        user_id=room_id, session_id=session_id, new_message=content):
                     if Emit.USAGE in self.features.emit:
-                        turn_usage = turn_usage + self._usage_from_event(event)
-
+                        usage = usage + self._usage_from_event(event)
                     if Emit.TOOL_CALLS in self.features.emit:
                         try:
                             await self._report_event(event, tools)
-                        except Exception as e:
-                            logger.warning("Failed to report event: %s", e)
-
+                        except Exception as exc:  # reporting must never break a turn
+                            logger.warning("Failed to report event: %s", exc)
+                    for response in event.get_function_responses() or []:
+                        completed.append(_describe_call(response))
                     if event.is_final_response():
-                        final_response_text = self._extract_event_text(event)
-                        logger.debug("Room %s: ADK agent completed with final response", room_id)
-
-                # Successful turn completion
-                self._last_turn_completed_at = time.monotonic()
-                self._room_history[room_id].append(
-                    {"role": "user", "content": msg.format_for_llm()}
-                )
-                if final_response_text:
-                    self._room_history[room_id].append(
-                        {"role": "model", "content": final_response_text}
-                    )
-
-                trim_threshold = self.config.max_history_messages * 2
-                if len(self._room_history[room_id]) > trim_threshold:
-                    self._room_history[room_id] = self._room_history[room_id][-self.config.max_history_messages :]
-
-                return
-
+                        final_text = self._extract_event_text(event)
+                break
             except Exception as exc:
-                if is_transient_error(exc) and attempt < self.max_retries:
-                    delay = min(
-                        self.max_backoff,
-                        self.initial_backoff * (self.backoff_factor ** (attempt - 1)),
-                    ) + random.uniform(0.5, self.jitter_max)
+                if attempt < self.policy.max_attempts and is_transient_error(exc):
+                    delay = self.policy.delay_for(attempt, random.random(), retry_after_seconds(exc))
                     logger.warning(
-                        "Room %s [%s]: Transient error / rate limit (429/503) encountered on model '%s' (%s). "
-                        "Preserving declared model identity. Retrying in %.2fs (attempt %d/%d)...",
-                        room_id,
-                        self.agent_name,
-                        self.config.model,
-                        exc,
-                        delay,
-                        attempt,
-                        self.max_retries,
-                    )
+                        "Room %s [%s]: transient error on model %s (%s: %s). Attempt %d/%d; "
+                        "%d tool call(s) already done; retrying in %.1fs with the same model.",
+                        room_id, self.agent_name, self.config.model, type(exc).__name__,
+                        str(exc)[:300], attempt, self.policy.max_attempts, len(completed), delay)
                     await asyncio.sleep(delay)
                     continue
-                else:
-                    logger.exception(
-                        "Error running ADK agent in room %s (attempt %d/%d exhausted, model='%s')",
-                        room_id,
-                        attempt,
-                        self.max_retries,
-                        self.config.model,
-                    )
-                    await tools.send_failure(
-                        AgentFailure("google_adk", GENERIC_PROVIDER_FAILURE_MESSAGE)
-                    )
-                    raise
+                logger.error(
+                    "Room %s [%s]: turn FAILED on model %s after %d attempt(s): %s: %s",
+                    room_id, self.agent_name, self.config.model, attempt,
+                    type(exc).__name__, str(exc)[:500])
+                await tools.send_failure(AgentFailure("google_adk", GENERIC_PROVIDER_FAILURE_MESSAGE))
+                raise
             finally:
                 try:
-                    await self.emit_usage(tools, turn_usage)
+                    await self.emit_usage(tools, usage)
                 finally:
                     if runner is not None:
                         await runner.close()
 
+        self._last_turn_completed_at = time.monotonic()
+        room_history = self._room_history[room_id]
+        room_history.append({"role": "user", "content": msg.format_for_llm()})
+        if final_text:
+            room_history.append({"role": "model", "content": final_text})
+        if len(room_history) > self.config.max_history_messages * 2:
+            del room_history[:-self.config.max_history_messages]
 
-def build_adapter(model: str, custom_section: str) -> ResilientGoogleADKAdapter:
-    """Instantiate a ResilientGoogleADKAdapter with explicit model and instructions."""
-    config = GoogleADKAdapterConfig(
-        model=model,
-        custom_section=custom_section,
-    )
-    return ResilientGoogleADKAdapter(config=config)
+
+def _describe_call(response: Any) -> str:
+    name = getattr(response, "name", "tool")
+    payload = str(getattr(response, "response", ""))[:120].replace("\n", " ")
+    return f"{name} -> {payload}"
 
 
-async def run_factory_agent(
-    seat_config: FactorySeatConfig,
-    requested_model: str | None = None,
-    allow_fallback: bool = False,
-    candidate_models: Sequence[str] = MODEL_CANDIDATES,
-) -> None:
-    """Run an individual factory seat with verified configuration and model handling.
+def preflight_model(model: str) -> None:
+    """Fail fast if the Gemini API does not know `model` (or the key is missing/invalid)."""
+    from google import genai
 
-    Default mode: Strict single-model execution (mandate compliance).
-    Development mode (--allow-fallback): Allows candidate model trial on initial startup failures.
-    """
-    agent_id, api_key = load_agent_config(seat_config.config_key)
-    ws_url = os.getenv("BAND_WS_URL")
-    rest_url = os.getenv("BAND_REST_URL")
+    if not (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")):
+        raise SystemExit("GOOGLE_API_KEY is not set (put it in .env; see .env.example)")
+    genai.Client().models.get(model=model)
 
-    primary_model = requested_model or seat_config.default_model
 
-    if not allow_fallback:
-        models_to_try = [primary_model]
-    else:
-        models_to_try = [primary_model] + [m for m in candidate_models if m != primary_model]
-
-    for model in models_to_try:
-        logger.info(
-            "Starting %s seat with model '%s' (strict=%s)...",
-            seat_config.role,
-            model,
-            not allow_fallback,
-        )
+def choose_model(declared: str, requested: str | None, allow_fallback: bool,
+                 skip_preflight: bool = False) -> str:
+    """The model to run. Strict by default: the mandate's model, verified to exist."""
+    model = requested or declared
+    if requested and requested != declared and not allow_fallback:
+        raise SystemExit(
+            f"--model {requested} differs from the mandate's `Model: {declared}`. The mandate "
+            "must name the model the seat runs: change factory/lineups.toml and re-render the "
+            "mandates, or pass --allow-fallback for a development run.")
+    if skip_preflight:
+        return model
+    candidates = [model] + ([m for m in MODEL_CANDIDATES if m != model] if allow_fallback else [])
+    for candidate in candidates:
         try:
-            adapter = build_adapter(model=model, custom_section=seat_config.system_prompt)
-            agent = Agent.create(
-                adapter=adapter,
-                agent_id=agent_id,
-                api_key=api_key,
-                ws_url=ws_url,
-                rest_url=rest_url,
-            )
-            logger.info("Factory seat %s is running with model '%s'.", seat_config.role, model)
-            await agent.run()
-            break
-        except Exception as exc:
-            error_str = str(exc)
-            if allow_fallback and any(err in error_str for err in ("404", "503", "UNAVAILABLE")):
-                logger.warning(
-                    "Model '%s' failed for %s (%s). Attempting next candidate...",
-                    model,
-                    seat_config.role,
-                    exc,
-                )
-                continue
-            logger.error("Seat %s encountered fatal error: %s", seat_config.role, exc)
+            preflight_model(candidate)
+        except SystemExit:
             raise
-    else:
-        logger.critical("All candidate models exhausted for %s.", seat_config.role)
-        raise SystemExit(1)
+        except Exception as exc:
+            logger.error("Model preflight failed for %s: %s", candidate, str(exc)[:300])
+            continue
+        if candidate != declared:
+            logger.critical(
+                "MODEL MISMATCH: running %s but the mandate declares %s. Do NOT submit a run "
+                "made this way without re-rendering the mandates for %s.",
+                candidate, declared, candidate)
+        return candidate
+    raise SystemExit(f"No usable model among {candidates}; see the errors above.")
+
+
+async def run_seat(*, agent_key: str, model: str, mandate_text: str,
+                   tools: list[CustomToolDef]) -> None:
+    """Connect one seat to Band and serve it until stopped."""
+    agent_id, api_key = load_agent_config(agent_key)
+    adapter = ResilientGoogleADKAdapter(
+        GoogleADKAdapterConfig(model=model, custom_section=mandate_text),
+        additional_tools=tools,
+    )
+    agent = Agent.create(
+        adapter=adapter,
+        agent_id=agent_id,
+        api_key=api_key,
+        ws_url=os.getenv("BAND_WS_URL"),
+        rest_url=os.getenv("BAND_REST_URL"),
+    )
+    logger.info("Seat %s connected with model %s and %d workspace tool(s); policy=%s",
+                agent_key, model, len(tools), adapter.policy)
+    await agent.run()

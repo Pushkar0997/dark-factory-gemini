@@ -1,201 +1,141 @@
-"""Submission readiness and integrity check script for the Dark Factory.
+"""Factory and submission checks. Nothing here can make a stage pass; it only reports.
 
-Runs all offline structural checks mirroring the official hackathon harness:
-1. File and directory layout verification
-2. Mandate structure and required headers (Harness, Model)
-3. Generic mandate validation (zero track-specific vocabulary)
-4. Credential and secret leak scanning (verifying gitignore compliance)
-5. Room export validation (if room.json is present)
+    python scripts/run_checks.py                         # factory self-checks (offline)
+    python scripts/run_checks.py --repo <result repo> --track tablekeeper
+                                                         # + official `harness check` on it
+    python scripts/run_checks.py --repo <result repo> --track tablekeeper --stage 1 [--isolated]
+                                                         # + official `harness run` for a stage
+
+Factory self-checks:
+  1. unit tests (tests/)                                 — retry, backoff, sandbox, rendering
+  2. every lineup renders mandates with real Harness/Model lines and no placeholders
+  3. this repo's mandates/ equal one lineup's rendering exactly (no hand drift), and
+     contain none of the official track vocabulary (the organisers' own list)
+  4. no stage-N/ folders committed in the factory repo by hand
+  5. local secrets files (.env, agent_config.yaml) are git-ignored and untracked
+
+The official harness lives in the kickoff checkout; point $KICKOFF_DIR at it (default
+~/band-work/kickoff) and $HARNESS_PYTHON at a Python with harness/requirements.txt
+installed (default ~/band-work/.venv/bin/python).
 """
 
 from __future__ import annotations
 
-import json
-import pathlib
-import re
+import argparse
+import os
 import subprocess
 import sys
+from pathlib import Path
 
-REQUIRED_FILES = ("README.md", "FACTORY.md", "pyproject.toml")
-MANDATE_FIELDS = ("Harness", "Model")
-STAGE_NAMES = ("stage-1", "stage-2", "stage-3", "stage-4")
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
-SECRETS = (
-    ("bearer-token", re.compile(r"(?i)\bbearer\s+(?=[A-Za-z0-9._\-]*\d)[A-Za-z0-9._\-]{20,}")),
-    ("api-key", re.compile(r"\bsk-[A-Za-z0-9._\-]{16,}")),
-    ("aws-access-key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
-    ("github-token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b")),
-    ("env-assignment", re.compile(r"(?i)\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)\s*=\s*\S+")),
-    ("url-credentials", re.compile(r"""(?<=://)[^/\s:@"'\\]+:[^/\s@"'\\]+(?=@)""")),
-)
+from factory.lineup import ROLES, load_lineups, render_mandate  # noqa: E402
 
-CONFIG_ONLY = {"env-assignment"}
-CONFIG_SUFFIXES = {".env", ".yml", ".yaml", ".toml", ".cfg", ".ini", ".json"}
+KICKOFF = Path(os.getenv("KICKOFF_DIR", Path.home() / "band-work" / "kickoff")).expanduser()
+HARNESS_PY = os.getenv("HARNESS_PYTHON", str(Path.home() / "band-work" / ".venv" / "bin" / "python"))
 
-SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "scratch"}
-TEXT_EXTS = {".md", ".py", ".txt", ".json", ".yaml", ".yml", ".toml", ".sh", ".dockerfile"}
+results: list[tuple[str, bool, str]] = []
 
 
-def is_git_tracked(rel_path: str, root: pathlib.Path) -> bool:
-    """Check if a relative path is tracked by git."""
-    try:
-        res = subprocess.run(
-            ["git", "ls-files", "--error-unmatch", rel_path],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        return res.returncode == 0
-    except Exception:
-        return False
+def record(name: str, ok: bool, detail: str = "") -> None:
+    results.append((name, ok, detail))
+    print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"\n       {detail}" if detail else ""))
 
 
-def check_repository(root: pathlib.Path, track: str = "tablekeeper") -> tuple[list[str], list[str], list[str]]:
-    """Inspect repository. Returns (errors, pending_items, notices)."""
-    errors: list[str] = []
-    pending: list[str] = []
-    notices: list[str] = []
+def git(*args: str) -> str:
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True).stdout
 
-    # 1. Required files
-    for req in REQUIRED_FILES:
-        if not (root / req).is_file():
-            errors.append(f"Missing required file: {req}")
 
-    # 2. Stage layout
-    for stg in STAGE_NAMES:
-        stg_dir = root / stg
-        if not stg_dir.is_dir():
-            errors.append(f"Missing stage directory: {stg}/")
-        else:
-            for req in ("Dockerfile", "RUN.md"):
-                if not (stg_dir / req).is_file():
-                    errors.append(f"Missing {stg}/{req}")
+def check_unit_tests() -> None:
+    res = subprocess.run([sys.executable, "-m", "pytest", "-q", str(ROOT / "tests")],
+                         capture_output=True, text=True)
+    tail = (res.stdout or res.stderr).strip().splitlines()[-1:] or ["no output"]
+    record("unit tests", res.returncode == 0, tail[0])
 
-    # 3. Mandates verification
-    mandates_dir = root / "mandates"
-    if not mandates_dir.is_dir():
-        errors.append("Missing mandates/ directory")
-    else:
-        mandate_files = sorted(mandates_dir.glob("*.md"))
-        # Exclude README.md if present
-        mandates_to_check = [f for f in mandate_files if f.name.lower() != "readme.md"]
-        if len(mandates_to_check) < 3:
-            errors.append(f"Found only {len(mandates_to_check)} mandate file(s); minimum 3 required")
 
-        for mf in mandates_to_check:
-            text = mf.read_text(encoding="utf-8", errors="replace")
-            for field in MANDATE_FIELDS:
-                if not re.search(rf"(?im)^[-*_ \t]*{field}[*_ \t]*:[*_ \t]*[^*_\s]", text):
-                    errors.append(f"mandates/{mf.name} missing `{field}:` declaration")
+def check_lineups_and_mandates() -> None:
+    lineups = load_lineups()
+    record("lineups render", True, ", ".join(lineups))
+    mandates = {p.name: p.read_text(encoding="utf-8") for p in (ROOT / "mandates").glob("*.md")}
+    match = None
+    for name, lineup in lineups.items():
+        expected = {lineup.seat(r).mandate_file: render_mandate(lineup, r) for r in ROLES}
+        if expected == mandates:
+            match = name
+    record("mandates/ equals a rendered lineup", match is not None,
+           f"lineup: {match}" if match else
+           f"found {sorted(mandates)}; run scripts/render_mandates.py --lineup <name>")
 
-            # Check track-specific vocabulary leakage
-            # Tablekeeper terms
-            tk_terms = {"booking", "party", "walk-in", "waitlist", "tablekeeper", "seat_party", "leave_table"}
-            pocket_terms = {"pocketful", "ledger", "split", "charge", "refund", "balance", "transfer"}
-            active_terms = tk_terms if track == "tablekeeper" else pocket_terms
+    vocab_file = KICKOFF / "harness" / "vocabulary.py"
+    if not vocab_file.is_file():
+        record("mandates use no track vocabulary", False, f"{vocab_file} not found; set KICKOFF_DIR")
+        return
+    sys.path.insert(0, str(KICKOFF))
+    from harness import vocabulary  # type: ignore
 
-            for line_no, line in enumerate(text.splitlines(), 1):
-                lower_line = line.lower()
-                for term in active_terms:
-                    if re.search(rf"\b{re.escape(term)}\b", lower_line):
-                        errors.append(
-                            f"Gate 4 violation: mandates/{mf.name}:{line_no} leaks track token '{term}'. "
-                            "Mandates must describe factory operation, never problem specifics."
-                        )
+    hits = []
+    for track in ("tablekeeper", "pocketful"):
+        banned = set(vocabulary.for_track(track))
+        for fname, text in mandates.items():
+            for n, line in enumerate(text.splitlines(), 1):
+                hits += [f"{fname}:{n} {term} ({track})" for _k, term in vocabulary.terms_in(line) if term in banned]
+    record("mandates use no track vocabulary (both tracks)", not hits, "; ".join(hits[:10]))
 
-    # 4. Room export (room.json)
-    room_file = root / "room.json"
-    if not room_file.is_file():
-        pending.append(
-            "room.json is not present (expected before live run; export full session from Band console upon completion)"
-        )
-    else:
-        try:
-            room_data = json.loads(room_file.read_text(encoding="utf-8"))
-            messages = room_data.get("messages", [])
-            seats = {
-                m["senderId"]: m.get("senderName") or m["senderId"]
-                for m in messages
-                if m.get("senderId") and str(m.get("senderType", "")).lower() == "agent"
-            }
-            if len(seats) < 3:
-                errors.append(f"room.json has only {len(seats)} agent seats (minimum 3 required)")
-            else:
-                notices.append(f"room.json verified: {len(seats)} seats, {len(messages)} messages")
-        except Exception as exc:
-            errors.append(f"room.json could not be parsed: {exc}")
 
-    # 5. Secret scanning
-    for path in sorted(root.rglob("*")):
-        rel = str(path.relative_to(root))
-        if any(part in SKIP_DIRS for part in path.parts):
-            continue
-        if path.is_file():
-            # Check if this is a sensitive local config file
-            is_local_secret_file = path.name in (".env", "agent_config.yaml")
-            if is_local_secret_file:
-                if is_git_tracked(rel, root):
-                    errors.append(f"CRITICAL SECURITY: {rel} is tracked by Git! Remove immediately with git rm --cached.")
-                else:
-                    notices.append(f"Local credential file '{rel}' is safely ignored by Git.")
-                continue
+def check_hygiene() -> None:
+    stages = [p for p in git("ls-files").splitlines() if p.split("/")[0].startswith("stage-")]
+    record("no hand-written stage folders in the factory repo", not stages,
+           f"tracked: {stages[:5]}" if stages else "")
+    tracked = [f for f in (".env", "agent_config.yaml") if git("ls-files", f).strip()]
+    ignored = all(git("check-ignore", f).strip() for f in (".env", "agent_config.yaml"))
+    record("local secrets are ignored and untracked", not tracked and ignored,
+           f"tracked: {tracked}" if tracked else "")
 
-            # For general text files, check pattern matches
-            if path.suffix.lower() in TEXT_EXTS or path.name in ("Dockerfile",):
-                is_config = path.suffix.lower() in CONFIG_SUFFIXES
-                try:
-                    text = path.read_text(encoding="utf-8", errors="replace")
-                    for name, pat in SECRETS:
-                        if name in CONFIG_ONLY and not is_config:
-                            continue
-                        if pat.search(text):
-                            if "example" in path.name.lower() or path.suffix == ".md":
-                                continue
-                            if is_git_tracked(rel, root):
-                                errors.append(f"Git-tracked file {rel} matches credential pattern: {name}")
-                            else:
-                                notices.append(f"Untracked file {rel} matches credential pattern: {name}")
-                            break
-                except Exception:
-                    pass
 
-    return errors, pending, notices
+def run_harness(*args: str) -> int:
+    if not (KICKOFF / "harness").is_dir():
+        record(f"harness {args[0]}", False, f"kickoff checkout not found at {KICKOFF}")
+        return 1
+    cmd = [HARNESS_PY, "-m", "harness", *args]
+    print("$", " ".join(cmd))
+    return subprocess.run(cmd, cwd=KICKOFF).returncode
 
 
 def main() -> None:
-    root = pathlib.Path(__file__).resolve().parent.parent
-    track = sys.argv[1] if len(sys.argv) > 1 else "tablekeeper"
-    print(f"============================================================")
-    print(f"  Dark Factory Submission Readiness Scanner")
-    print(f"  Target Root: {root}")
-    print(f"  Track:       {track}")
-    print(f"============================================================\n")
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--repo", help="a submission/result repository to check with the official harness")
+    ap.add_argument("--track", choices=("toy", "tablekeeper", "pocketful"))
+    ap.add_argument("--stage", help="also `harness run` this stage (1-4) or 'all'")
+    ap.add_argument("--isolated", action="store_true", help="run stages in isolated (judging) mode")
+    ap.add_argument("--out", help="harness --out directory (must not exist)")
+    args = ap.parse_args()
 
-    errors, pending, notices = check_repository(root, track)
+    print("== factory self-checks")
+    check_unit_tests()
+    check_lineups_and_mandates()
+    check_hygiene()
 
-    if notices:
-        print("[NOTICES & ENVIRONMENT STATE]")
-        for n in notices:
-            print(f"  - {n}")
-        print()
+    if args.repo:
+        if not args.track:
+            ap.error("--repo needs --track")
+        repo = str(Path(args.repo).expanduser().resolve())
+        print(f"\n== official harness check: {repo}")
+        record("harness check", run_harness("check", repo, "--track", args.track) == 0)
+        if args.stage:
+            run_args = ["run", "--track", args.track, "--repo", repo]
+            run_args += ["--all"] if args.stage == "all" else ["--stage", args.stage]
+            if args.isolated:
+                run_args += ["--mode", "isolated"]
+            if args.out:
+                run_args += ["--out", args.out]
+            print(f"\n== official harness run (directional only: the shipped checks are a subset)")
+            record(f"harness run stage {args.stage}", run_harness(*run_args) == 0,
+                   "read the 'claimed stage' line above; exit status alone is not the verdict")
 
-    if pending:
-        print("[PENDING POST-LIVE RUN ARTIFACTS]")
-        for p in pending:
-            print(f"  - {p}")
-        print()
-
-    if errors:
-        print(f"[ERRORS TO FIX] ({len(errors)} issue(s) detected):")
-        for err in errors:
-            print(f"  x {err}")
-        print()
-        sys.exit(1)
-
-    print("STATUS: All pre-run structural, mandate, and security checks PASSED.")
-    print("        Ready for live room rehearsal or competition run.")
-    sys.exit(0)
+    failed = [name for name, ok, _ in results if not ok]
+    print(f"\n{len(results) - len(failed)}/{len(results)} checks passed" + (f"; failed: {failed}" if failed else ""))
+    sys.exit(1 if failed else 0)
 
 
 if __name__ == "__main__":

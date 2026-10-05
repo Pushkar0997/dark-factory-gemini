@@ -1,14 +1,17 @@
-# Preconfigured BAND agent seat identities and credentials
-# Replace with the agent UUIDs and keys configured in your Band Desktop instance
+# Band agent credentials for the Google ADK seats run by `factory-seat`.
+# Copy to agent_config.yaml (git-ignored) and fill in from the Band console
+# (app.band.ai → the agent → UUID and API key). agent_id is the UUID (36 chars);
+# api_key starts with `band_a_`. Keys here must match `config_key` in factory/lineups.toml.
+# Claude Code seats run inside Band Desktop and need no entry here.
 
 gemini_planner:
-  agent_id: "your-planner-agent-uuid-here"
-  api_key: "your-planner-band-api-key-here"
+  agent_id: "00000000-0000-0000-0000-000000000000"
+  api_key: "band_a_your-planner-api-key"
 
 gemini_builder:
-  agent_id: "your-builder-agent-uuid-here"
-  api_key: "your-builder-band-api-key-here"
+  agent_id: "00000000-0000-0000-0000-000000000000"
+  api_key: "band_a_your-builder-api-key"
 
 gemini_reviewer:
-  agent_id: "your-reviewer-agent-uuid-here"
-  api_key: "your-reviewer-band-api-key-here"
+  agent_id: "00000000-0000-0000-0000-000000000000"
+  api_key: "band_a_your-reviewer-api-key"
