@@ -44,7 +44,7 @@ A **lineup** (`factory/lineups.toml`) maps the three roles onto real Band seats:
 | Lineup | coordinator | implementer | reviewer | Status |
 |---|---|---|---|---|
 | `hybrid` (recommended) | `gemini_planner` — Google ADK via `factory-seat`, `gemini-3.8-flash` | `Implementer` — Claude Code, `claude-sonnet-5-5` | `Reviewer` — Claude Code, `claude-sonnet-5-5` | coordinator path not yet rehearsed live (needs a Gemini key) |
-| `claude` (**judged run**) | `Planner` — Claude Code, `claude-sonnet-5-5` | `Implementer` — Claude Code, `claude-opus-5-5` | `Reviewer` — Claude Code, `claude-opus-5-5` | toy rehearsed (on sonnet); used for the judged tablekeeper run |
+| `claude` (**judged run**) | `Planner` — Claude Code, `claude-sonnet-5-5` | `Implementer` — Claude Code, `claude-opus-5-5` | `Reviewer` — Claude Code, `claude-opus-5-5` | judged tablekeeper run: **4/4 stages approved** (§11); toy rehearsed on sonnet |
 | `gemini` | Google ADK | Google ADK + workspace tools | Google ADK + workspace tools | experimental, not rehearsed |
 
 Why hybrid: the coordinator reads, plans and routes — a messaging-plus-read-only toolset on a
@@ -216,13 +216,83 @@ scripts/assemble_submission.sh ~/band-work/<run> <track>              # merge th
 scripts/fresh_clone_check.sh <github url> <track>                     # guide's "before you submit" 1–2 on a fresh clone
 ```
 
-## 11. Measurements
+## 11. Measurements and results
 
-Only measured numbers are recorded here.
+Only measured numbers are recorded here. Spend = Band `usage rooms`, a list-price estimate,
+not a bill. Times are UTC on 2026-10-05.
 
-| Run | Lineup | Result | Wall time | Spend (Band `usage rooms`, list-price estimate, not a bill) |
+### The judged run (room `7c5f1e66…`, result repo `~/band-work/tk-final`)
+
+Lineup `claude`: Planner `claude-sonnet-5-5`, Implementer and Reviewer `claude-opus-5-5`
+(each confirmed from the seat's own Claude Code transcript). One dispatch at 06:42:35
+covering all four stages.
+
+| Stage | Approved revision | Review cycles | Active time | Official harness, `--mode isolated`, operator re-run on the final repo |
 |---|---|---|---|---|
-| **judged tablekeeper run**, room `7c5f1e66…`, 2026-10-05 | claude: coordinator `claude-sonnet-5-5`, implementer + reviewer `claude-opus-5-5` (confirmed from the seats' transcripts) | stage 1 approved at `d67a068` after one rejection (below); stage 2 in progress at time of writing | stage 1: **14 min 22 s** dispatch (06:42:35 UTC) → `STAGE 1 OUTCOME: approved` (06:56:57), no human input. Then idle 3 h 49 min on a provider usage limit (§12) | snapshot 13:07 UTC: 13.0 M tokens, **$9.74**: implementer $5.38 · reviewer $3.39 · coordinator $0.98 |
+| 1 | `d67a068` | **1** reject → fix → approve | 14 min 22 s | suite 1: 120/120 · claims stage 1 |
+| 2 | `de1731b` | 0 | ≈ 20 min | suites 1–2: 120/120, 25/25 · claims stage 2 |
+| 3 | `101956e` | 0 | ≈ 12 min | suites 1–3: 120/120, 25/25, 7/7 · claims stage 3 |
+| 4 | `b6ae92f` | 0 | ≈ 10 min | suites 1–4: 120/120, 25/25, 7/7, 6/6 · claims stage 4 |
+
+`harness run --all --mode isolated` on the final repository: every folder claims its own
+stage, so the chain is unbroken from 1 to 4. (The shipped checks are a sample of the graded
+tests; this is directional evidence, not a score.)
+
+- **Time:** 9 h 35 min wall clock (06:42:35 → `STAGE 4 OUTCOME` 16:17:57), of which
+  **55.7 min was active work** and 8 h 40 min was idle in three provider/network outages
+  (below).
+- **Spend:** 38.3 M tokens, **$25.95**: implementer $13.68 · reviewer $9.87 · coordinator
+  $2.40.
+- **Work distribution** (from the room log): coordinator 22 messages / 39 tool calls,
+  implementer 13 messages / 112 tool calls, reviewer 9 messages / 93 tool calls. The
+  coordinator wrote 58 numbered requirements (R1–R58) across the four handoffs; the
+  implementer made all 13 commits; the reviewer issued 5 formal verdicts and ran its own probe
+  suites (68 API probes at stage 3, 45 at stage 4, Playwright at 1280 px and 375 px, upgrade
+  probes from earlier stages' exports).
+
+### Bad results the factory caught (all inside the judged run, no human involved)
+
+1. **Stage 1, rejected revision.** The implementer reported `cdfdb64` with its own tests and
+   the shipped harness green. The reviewer rebuilt it on a clean worktree, probed beyond the
+   shipped checks, and answered `VERDICT tablekeeper-stage-1 cdfdb647…: CHANGES REQUIRED`:
+   **D1** 500 responses at calendar edges, **D2** HEAD/OPTIONS returning non-JSON errors,
+   **D3** a non-integer party size accepted on PATCH and moves — each with a reproduce
+   command. The coordinator sent `FIX REQUEST … (cycle 1 of max 4)` with the full list; the
+   implementer fixed all three with regression tests in `d67a068`; the reviewer re-verified
+   and approved, about 4 minutes after the rejection. **None of the three was caught by the
+   shipped checks.**
+2. **Stage 2 → 3, a review note became work.** The stage-2 verdict carried a non-blocking
+   note on selected-cell hover contrast; the implementer fixed it in stage 3 and said so in
+   its revision report.
+3. **Stage 3 → 4, a review note became a requirement.** The stage-3 reviewer found that the
+   availability grid's seat labels used fixture capacities instead of the policy in force
+   (`data-available` was right, the labels misled). The coordinator turned it into
+   requirement R58 of the stage-4 handoff; the implementer fixed it with a UI test; the
+   stage-4 reviewer verified it in a browser at both widths.
+4. **Reviewer checking its own work.** At stage 4 two of the reviewer's 45 probes failed
+   first; it re-derived the expected values from the spec, found its probes were wrong, and
+   said so in the verdict instead of filing false defects.
+
+### Outages and human input after dispatch (stated exactly)
+
+| Idle | Cause | How it resumed |
+|---|---|---|
+| 07:03 → 10:52 (3 h 49 min) | implementer hit the Claude subscription usage limit (`resets 4:20pm` IST = 10:50 UTC) | operator posted **`continue your work`** to the three seats at 10:52, two minutes after the reset |
+| 11:03 → 13:29 (2 h 25 min) | reviewer's turn died on a network error (`Can't reach the API server … ENOTFOUND`) while verifying stage 2 | operator posted one message to the reviewer: **"your verification of de1731b… was interrupted by a network error (ENOTFOUND) at 11:03 UTC; please resume it and send your verdict"** |
+| 13:40 → 16:05 (2 h 25 min) | all three seats hit the usage limit (`resets 9:20pm` IST = 15:50 UTC) | **the band resumed by itself** (Band re-ran the failed turns after the reset); no human message |
+
+The two operator messages carry no technical content — no hints, no approvals, no fixes —
+but they are human input after dispatch, so we do not claim the run as fully autonomous:
+**stage 1 ran with no human input from dispatch to approval; stages 2–4 completed after the
+two resume messages above.** Every commit in the stage folders was made by the implementer
+seat; no human committed under `stage-*/`. The dispatch also asked the band to commit a
+building stage 1 early because a deadline was near; the coordinator passed that urgency on
+in later handoffs.
+
+### Rehearsal
+
+| Run | Lineup | Result | Wall time | Spend |
+|---|---|---|---|---|
 | toy rehearsal 1, 2026-10-05 | claude, all `claude-sonnet-5-5` | 4/4 stages approved by the reviewer; operator re-check `harness run --all --mode isolated`: every folder claims its stage | 23 min 40 s dispatch → final report, of which ~7.6 min stalled on a full host disk (see §12) | 7.73 M tokens, **$2.92**: implementer $1.12 · reviewer $1.06 · coordinator $0.74 |
 
 Toy rehearsal 1 exercised: seat self-recruitment by the coordinator, verbatim self-contained
@@ -231,19 +301,6 @@ one per extension, reviewer verification on a clean worktree in host and isolate
 (including the stage-2 browser suite), machine-failure escalation as a recorded blocker.
 It did **not** exercise a rejection: every revision passed review first time on this small
 problem. The real track is where the reject → fix loop is expected to matter.
-
-**A bad result the factory caught (judged run, stage 1).** The implementer reported
-`cdfdb64` (full API, its own tests passing, shipped harness green). The reviewer rebuilt it
-from a clean worktree, probed beyond the shipped checks, and answered
-`VERDICT tablekeeper-stage-1 cdfdb647…: CHANGES REQUIRED` with three defects, each with a
-reproduce command: **D1** 500 responses at calendar edges, **D2** HEAD/OPTIONS returning
-non-JSON errors, **D3** a non-integer `party_size` accepted on PATCH and moves. The
-coordinator sent `FIX REQUEST tablekeeper-stage-1 (cycle 1 of max 4)` with the full defect
-list; the implementer fixed all three with regression tests in `d67a068`
-(`fix D1 calendar-edge 500s, D2 HEAD/OPTIONS JSON errors, D3 non-integer party_size on
-PATCH/moves`); the coordinator sent a `RE-REVIEW HANDOFF`; the reviewer re-verified and
-approved. Elapsed from verdict to approval: about 4 minutes. None of the three defects was
-caught by the shipped checks.
 
 ## 12. Design trade-offs and what did not work
 
@@ -266,16 +323,15 @@ caught by the shipped checks.
   refused to prune data it did not own; the coordinator recorded `STAGE 1 OUTCOME: blocked`
   without asking the human. Mandates now also require seats to remove only the containers
   and images they created, and `prepare_run.sh` refuses to start with < 10 GiB free.
-- **A provider usage limit stalled the run, and a human restarted it (judged run).** At
-  07:03 UTC the implementer's Claude Code turn failed with `You've hit your session limit ·
-  resets 4:20pm`. Band recorded the failed turn, but nothing in the factory re-wakes a seat
-  when the limit resets, and the coordinator only acts on incoming messages, so all three
-  seats sat idle for 3 h 49 min. At 10:52 UTC the operator posted `continue your work` to the
-  three seats. **That message is human input after dispatch: stage 1 is a clean dark-factory
-  run; stage 2 onward in this room is not, and we do not claim it is.** Fixes we would make:
-  a watchdog that re-posts the last handoff to a seat whose turn failed with a rate or usage
-  limit once the limit resets (the same duplicate-safe resume `factory-seat` already does for
-  Gemini 429s), and a cheaper model on the implementer for long runs.
+- **Unattended runs meet provider limits (learned in the judged run).** Two Claude
+  subscription usage limits and one network error idled the band for 8 h 40 min of a
+  55.7-minute job. Band re-runs a turn that failed on a usage limit once the limit resets
+  (the third outage recovered with no human); a turn that died on a network error was not
+  retried, and we nudged it by hand (§11). What we would change: run the implementer — the
+  biggest spender — on a cheaper model or an API key for long runs, start runs at the
+  beginning of a usage window, and add a watchdog that re-sends the last handoff when a
+  seat's turn ends in a transport error (the duplicate-safe resume `factory-seat` already
+  does for Gemini 429s).
 - **Reviewer runs the harness on its own worktree (learned).** In the rehearsal the reviewer
   built from a clean worktree but pointed the harness at the shared repository; the mandate
   now requires the worktree so the result belongs to the exact hash.
@@ -288,8 +344,10 @@ caught by the shipped checks.
   the API from this machine (no key present at the time of writing); `factory-seat` verifies
   it at startup.
 - The all-Gemini lineup is untested end to end.
-- No automatic resume after a Claude Code usage limit (see §12): a long unattended run on a
-  subscription can stop until a human nudges it, which breaks autonomy.
+- No automatic resume after a transport error (see §12): Band recovers usage-limit
+  failures by itself, but a turn that dies on a network error waits for a message.
+- The shipped checks pass at every stage, but they are a sample (11% of stage 3's graded
+  tests, 21% of stage 4's); the reviewer's own probes are our only evidence beyond them.
 - `agent_config.yaml` entries `gemini_builder`/`gemini_reviewer` currently point at agents
   whose Band Desktop seats are Claude Code; dedicated agents are needed for the gemini lineup.
 - Long specifications are pasted into handoffs in parts; a coordinator model with a small

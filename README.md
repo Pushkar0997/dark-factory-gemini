@@ -9,6 +9,20 @@ Seats can run on **Claude Code** (Band Desktop runtimes), **Google ADK / Gemini*
 **claude** lineup (no Gemini key was available at dispatch); **hybrid** (Gemini coordinator +
 Claude Code implementer/reviewer) is the recommended lineup when a Gemini key is present.
 
+## Result
+
+From **one dispatch**, the three seats built and approved **all four tablekeeper stages**.
+The official harness in isolated (judging) mode passes every shipped check, and every folder
+claims its own stage: suite 1 120/120, suite 2 25/25, suite 3 7/7, suite 4 6/6.
+
+- **Review that changed the code:** stage 1 was rejected with three defects the shipped
+  checks never caught. They were fixed and re-verified in about 4 minutes. Two later review
+  notes became fixes in the next stage.
+- **Time and spend:** 55.7 min of active work and **$25.95** at list prices. Wall time was
+  9 h 35 min, because two usage limits and one network outage left the band idle.
+- **Disclosure:** two human "resume" messages were posted after the dispatch. They are quoted
+  exactly in [FACTORY.md §11](FACTORY.md#11-measurements-and-results).
+
 | Read | For |
 |---|---|
 | [FACTORY.md](FACTORY.md) | how the factory works, how to stand it up, costs, failure handling |
