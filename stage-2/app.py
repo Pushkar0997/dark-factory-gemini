@@ -153,11 +153,11 @@ def res_view(state, rec):
     tz = tz_of(rest)
     start = dt.datetime.fromisoformat(rec["start_utc"])
     end = start + dt.timedelta(minutes=rest["reservation_duration_minutes"])
-    return {
+    out = {
         "reservation_id": rec["id"],
         "reference": rec["reference"],
         "restaurant_id": rec["restaurant_id"],
-        "table_id": rec["table_id"],
+        "table_ids": list(rec["table_ids"]),
         "party_size": rec["party_size"],
         "status": rec["status"],
         "starts_at_local": rec["starts_at_local"],
@@ -165,6 +165,9 @@ def res_view(state, rec):
         "ends_at": iso(end.astimezone(tz)),
         "created_at": rec["created_at"],
     }
+    if len(rec["table_ids"]) == 1:
+        out["table_id"] = rec["table_ids"][0]
+    return out
 
 
 def interval(state, rec):
@@ -233,31 +236,68 @@ def require_str(body, key, required=True):
     return body[key]
 
 
-def validate_booking(state, rest_id, table_id, starts_local, party):
-    """Full POST /reservations validation; returns (rest, start_utc)."""
+def table_set(body, required=True):
+    """Read table_id / table_ids from a body; returns a list of ids or None when absent."""
+    has_one = body.get("table_id") is not None
+    has_many = body.get("table_ids") is not None
+    if has_one and has_many:
+        raise bad("validation_failed", "send either table_id or table_ids, not both")
+    if has_one:
+        if not isinstance(body["table_id"], str):
+            raise malformed("table_id must be a string")
+        return [body["table_id"]]
+    if has_many:
+        ids = body["table_ids"]
+        if not isinstance(ids, list) or not ids or not all(isinstance(t, str) for t in ids):
+            raise bad("validation_failed", "table_ids must be a non-empty list of table ids")
+        if len(set(ids)) != len(ids):
+            raise bad("validation_failed", "duplicate table id")
+        return list(ids)
+    if required:
+        raise bad("validation_failed", "table_id or table_ids is required")
+    return None
+
+
+def pair_order(rest, ids):
+    """Return the pair in combinable order, or None if the pair is not declared."""
+    for pair in rest.get("combinable") or []:
+        if set(pair) == set(ids):
+            return list(pair)
+    return None
+
+
+def validate_booking(state, rest_id, table_ids, starts_local, party):
+    """Full POST /reservations validation; returns (rest, start_utc, ordered table ids)."""
     rest = state["restaurants"].get(rest_id)
     if rest is None:
         raise not_found("unknown restaurant")
-    table = table_of(rest, table_id)
-    if table is None:
+    tables = [table_of(rest, t) for t in table_ids]
+    if any(t is None for t in tables):
         raise not_found("unknown table")
+    if len(table_ids) > 2:
+        raise bad("combination_not_allowed", "at most two tables can be combined")
+    if len(table_ids) == 2:
+        ordered = pair_order(rest, table_ids)
+        if ordered is None:
+            raise bad("combination_not_allowed", "these tables cannot be combined")
+        table_ids = ordered
     check_party(party)
     try:
         naive = parse_local(starts_local)
     except ValueError:
         raise bad("validation_failed", "starts_at_local must be YYYY-MM-DDTHH:MM")
     start = check_slot(rest, naive)
-    if party > table["capacity"]:
+    if party > sum(t["capacity"] for t in tables):
         raise bad("party_exceeds_capacity", "party exceeds table capacity")
-    return rest, start
+    return rest, start, list(table_ids)
 
 
-def conflicts(state, rest, table_id, start, exclude=()):
+def conflicts(state, rest, table_ids, start, exclude=()):
     end = start + dt.timedelta(minutes=rest["reservation_duration_minutes"])
     for rec in state["reservations"].values():
         if rec["status"] != "confirmed" or rec["id"] in exclude:
             continue
-        if rec["restaurant_id"] != rest["id"] or rec["table_id"] != table_id:
+        if rec["restaurant_id"] != rest["id"] or not set(rec["table_ids"]) & set(table_ids):
             continue
         if overlaps((start, end), interval(state, rec)):
             return True
@@ -308,7 +348,13 @@ def build_from_fixture(fx):
                 if h["weekday"] not in WEEKDAYS or parse_hhmm(h["opens"]) >= parse_hhmm(h["closes"]):
                     raise bad("validation_failed", "bad opening hours")
                 hours.append(dict(h))
-            rest = {**r, "tables": tables, "opening_hours": hours}
+            combinable = []
+            for pair in r.get("combinable") or []:
+                if not isinstance(pair, list) or len(pair) != 2 or pair[0] == pair[1] \
+                        or not all(any(t["id"] == x for t in tables) for x in pair):
+                    raise bad("validation_failed", "combinable entries are pairs of the restaurant's tables")
+                combinable.append(list(pair))
+            rest = {**r, "tables": tables, "opening_hours": hours, "combinable": combinable}
             for k in ("slot_minutes", "reservation_duration_minutes", "cancellation_cutoff_minutes"):
                 if isinstance(rest[k], bool) or not isinstance(rest[k], int):
                     raise bad()
@@ -328,13 +374,17 @@ def build_from_fixture(fx):
                 raise bad("validation_failed", "reference must be 6..12 of A-Z0-9 and unique")
             if rid in st["reservations"] or check_id(b["user_id"]) not in st["users"]:
                 raise bad("validation_failed", "duplicate id or unknown user")
-            if table_of(rest, b["table_id"]) is None:
+            tids = [b["table_id"]] if b.get("table_id") is not None else b["table_ids"]
+            if not isinstance(tids, list) or not tids or len(tids) > 2 or len(set(tids)) != len(tids) \
+                    or any(table_of(rest, t) is None for t in tids):
                 raise bad("validation_failed", "unknown table")
+            if len(tids) == 2:
+                tids = pair_order(rest, tids) or list(tids)
             if b.get("status", "confirmed") not in ("confirmed", "cancelled"):
                 raise bad("validation_failed", "bad status")
             st["reservations"][rid] = {
                 "id": rid, "reference": ref, "user_id": b.get("user_id"),
-                "restaurant_id": rest["id"], "table_id": b["table_id"],
+                "restaurant_id": rest["id"], "table_ids": tids,
                 "party_size": b.get("party_size"), "status": b.get("status", "confirmed"),
                 "starts_at_local": fmt_local(naive), "start_utc": iso(start),
                 "created_at": b.get("created_at") or iso(now_utc().replace(microsecond=0)),
@@ -362,6 +412,9 @@ def validate_state(st):
             if not isinstance(u.get(f), str):
                 raise ValueError("bad user")
     for r in st["restaurants"].values():
+        r.setdefault("combinable", [])
+        if not isinstance(r["combinable"], list):
+            raise ValueError("bad combinable")
         ZoneInfo(r["timezone"])
         for f in ("slot_minutes", "reservation_duration_minutes", "cancellation_cutoff_minutes"):
             if not isinstance(r[f], int):
@@ -372,7 +425,12 @@ def validate_state(st):
         if rec["restaurant_id"] not in st["restaurants"]:
             raise ValueError("bad reservation")
         dt.datetime.fromisoformat(rec["start_utc"])
-        for f in ("id", "reference", "table_id", "status", "starts_at_local", "created_at"):
+        if "table_ids" not in rec:  # stage-1 export
+            rec["table_ids"] = [rec.pop("table_id")]
+        rec.pop("table_id", None)
+        if not isinstance(rec["table_ids"], list) or not all(isinstance(t, str) for t in rec["table_ids"]):
+            raise ValueError("bad reservation")
+        for f in ("id", "reference", "status", "starts_at_local", "created_at"):
             if not isinstance(rec.get(f), str):
                 raise ValueError("bad reservation")
     for v in st["tokens"].values():
@@ -522,9 +580,11 @@ def _availability(rest, date, party):
     tz = tz_of(rest)
     dur = dt.timedelta(minutes=rest["reservation_duration_minutes"])
     busy = {}
+    cap = {t["id"]: t["capacity"] for t in rest["tables"]}
     for rec in STATE["reservations"].values():
         if rec["status"] == "confirmed" and rec["restaurant_id"] == rest["id"]:
-            busy.setdefault(rec["table_id"], []).append(interval(STATE, rec))
+            for tid in rec["table_ids"]:
+                busy.setdefault(tid, []).append(interval(STATE, rec))
     slots, seen = [], set()
     for h in hours_for(rest, date):
         o, c = parse_hhmm(h["opens"]), parse_hhmm(h["closes"])
@@ -540,12 +600,18 @@ def _availability(rest, date, party):
                 continue
             seen.add(naive)
             iv = (start, start + dur)
-            avail = [t["id"] for t in rest["tables"]
-                     if t["capacity"] >= party
-                     and not any(overlaps(iv, b) for b in busy.get(t["id"], ()))]
+            free = {t["id"] for t in rest["tables"]
+                    if not any(overlaps(iv, b) for b in busy.get(t["id"], ()))}
+            avail = [t["id"] for t in rest["tables"] if t["capacity"] >= party and t["id"] in free]
+            options = [{"table_ids": [tid], "capacity": cap[tid]} for tid in avail]
+            for pair in rest.get("combinable") or []:
+                total = cap[pair[0]] + cap[pair[1]]
+                if total >= party and pair[0] in free and pair[1] in free:
+                    options.append({"table_ids": list(pair), "capacity": total})
             slots.append({"starts_at_local": fmt_local(naive),
                           "starts_at": iso(start.astimezone(tz)),
-                          "available_table_ids": avail})
+                          "available_table_ids": avail,
+                          "available_options": options})
     slots.sort(key=lambda s: s["starts_at_local"])
     return 200, {"restaurant_id": rest["id"], "date": date.isoformat(),
                  "timezone": rest["timezone"], "slots": slots}
@@ -553,7 +619,7 @@ def _availability(rest, date, party):
 
 def h_create(uid, body):
     rest_id = require_str(body, "restaurant_id")
-    table_id = require_str(body, "table_id")
+    table_ids = table_set(body)
     if "starts_at_local" not in body or body["starts_at_local"] is None:
         raise bad("validation_failed", "starts_at_local is required")
     if not isinstance(body["starts_at_local"], str):
@@ -561,15 +627,15 @@ def h_create(uid, body):
     if "party_size" not in body:
         raise bad("validation_failed", "party_size is required")
     party = body["party_size"]
-    rest, start = validate_booking(STATE, rest_id, table_id, body["starts_at_local"], party)
-    if conflicts(STATE, rest, table_id, start):
+    rest, start, table_ids = validate_booking(STATE, rest_id, table_ids, body["starts_at_local"], party)
+    if conflicts(STATE, rest, table_ids, start):
         raise ApiError(409, "table_unavailable", "table is taken for that time")
     rid = next_id(STATE, "res")
     while rid in STATE["reservations"]:
         rid = next_id(STATE, "res")
     ref = new_reference(STATE)
     rec = {"id": rid, "reference": ref, "user_id": uid, "restaurant_id": rest["id"],
-           "table_id": table_id, "party_size": party, "status": "confirmed",
+           "table_ids": table_ids, "party_size": party, "status": "confirmed",
            "starts_at_local": body["starts_at_local"], "start_utc": iso(start),
            "created_at": iso(now_utc().replace(microsecond=0))}
     STATE["reservations"][rid] = rec
@@ -617,10 +683,9 @@ def h_cancel(uid, ref):
 def item_fields(item):
     """Type-check optional amendment fields; returns dict of supplied fields."""
     out = {}
-    if item.get("table_id") is not None:
-        if not isinstance(item["table_id"], str):
-            raise malformed("table_id must be a string")
-        out["table_id"] = item["table_id"]
+    tids = table_set(item, required=False)
+    if tids is not None:
+        out["table_ids"] = tids
     if item.get("starts_at_local") is not None:
         if not isinstance(item["starts_at_local"], str):
             raise bad("validation_failed", "starts_at_local must be YYYY-MM-DDTHH:MM")
@@ -632,15 +697,15 @@ def item_fields(item):
 
 def plan_change(rec, fields):
     """Validate an amendment of rec; return the new (table, local, party, start_utc) or None if no-op."""
-    table = fields.get("table_id", rec["table_id"])
+    table = fields.get("table_ids", rec["table_ids"])
     local = fields.get("starts_at_local", rec["starts_at_local"])
     party = fields.get("party_size", rec["party_size"])
     if "party_size" in fields:
         check_party(party)
-    if (table, local, party) == (rec["table_id"], rec["starts_at_local"], rec["party_size"]) \
+    if (sorted(table), local, party) == (sorted(rec["table_ids"]), rec["starts_at_local"], rec["party_size"]) \
             and not isinstance(party, bool):
         return None
-    _, start = validate_booking(STATE, rec["restaurant_id"], table, local, party)
+    _, start, table = validate_booking(STATE, rec["restaurant_id"], table, local, party)
     return table, local, party, iso(start)
 
 
@@ -658,7 +723,7 @@ def h_patch(uid, ref, body):
         rest = STATE["restaurants"][rec["restaurant_id"]]
         if conflicts(STATE, rest, table, dt.datetime.fromisoformat(start), exclude=(rec["id"],)):
             raise ApiError(409, "table_unavailable", "table is taken for that time")
-        rec.update(table_id=table, starts_at_local=local, party_size=party, start_utc=start)
+        rec.update(table_ids=table, starts_at_local=local, party_size=party, start_utc=start)
         return 200, res_view(STATE, rec)
 
 
@@ -691,7 +756,7 @@ def h_moves(uid, body):
         check_cutoff(rec)
         change = plan_change(rec, fields)
         if change is None:
-            change = (rec["table_id"], rec["starts_at_local"], rec["party_size"], rec["start_utc"])
+            change = (rec["table_ids"], rec["starts_at_local"], rec["party_size"], rec["start_utc"])
         recs.append(rec)
         plans.append(change)
     rest = STATE["restaurants"][rest_id]
@@ -703,12 +768,12 @@ def h_moves(uid, body):
         results.append((table, (s, s + dur)))
     for i in range(len(results)):
         for j in range(i + 1, len(results)):
-            if results[i][0] == results[j][0] and overlaps(results[i][1], results[j][1]):
+            if set(results[i][0]) & set(results[j][0]) and overlaps(results[i][1], results[j][1]):
                 raise ApiError(409, "table_unavailable", "moved bookings overlap")
         if conflicts(STATE, rest, results[i][0], results[i][1][0], exclude=listed):
             raise ApiError(409, "table_unavailable", "table is taken for that time")
     for rec, (table, local, party, start) in zip(recs, plans):
-        rec.update(table_id=table, starts_at_local=local, party_size=party, start_utc=start)
+        rec.update(table_ids=table, starts_at_local=local, party_size=party, start_utc=start)
     return 201, {"reservations": [res_view(STATE, r) for r in recs]}
 
 

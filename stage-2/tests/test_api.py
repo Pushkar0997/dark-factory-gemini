@@ -351,6 +351,91 @@ def review_cycle1():
     assert call("GET", "/reservations/" + r4["reference"], token=ada)[1] == r4
 
 
+@test
+def combined_tables():
+    r = restaurant()
+    r["combinable"] = [["t_1", "t_2"], ["t_2", "t_3"]]
+    reset([r])
+    ada, bob = login(), login("bob@example.com")
+    d = day()
+    av = call("GET", "/availability?restaurant_id=r_anker&date=%s&party_size=6" % d)[1]["slots"][2]
+    assert av["available_table_ids"] == ["t_3"], av
+    assert av["available_options"] == [{"table_ids": ["t_3"], "capacity": 6},
+                                       {"table_ids": ["t_1", "t_2"], "capacity": 6},
+                                       {"table_ids": ["t_2", "t_3"], "capacity": 10}], av
+    assert call("GET", "/restaurants/r_anker")[1]["combinable"] == r["combinable"]
+    pb = lambda tok, ids, party=6, hhmm="19:00", extra=None: call("POST", "/reservations", dict(
+        {"restaurant_id": "r_anker", "table_ids": ids, "starts_at_local": d + "T" + hhmm, "party_size": party},
+        **(extra or {})), tok, k())
+    s = pb(ada, ["t_2", "t_1"])
+    assert s[0] == 201 and s[1]["table_ids"] == ["t_1", "t_2"] and "table_id" not in s[1], s
+    single = book(bob, table="t_3", hhmm="19:00")[1]
+    assert single["table_ids"] == ["t_3"] and single["table_id"] == "t_3"
+    err(pb(bob, ["t_1", "t_3"], hhmm="21:00"), 422, "combination_not_allowed")
+    err(pb(bob, ["t_1", "t_2", "t_3"], hhmm="21:00"), 422, "combination_not_allowed")
+    err(pb(bob, ["t_1", "t_1"], hhmm="21:00"), 422, "validation_failed")
+    err(pb(bob, [], hhmm="21:00"), 422, "validation_failed")
+    err(pb(bob, ["t_1", "t_9"], hhmm="21:00"), 404, "not_found")
+    err(pb(bob, ["t_1", "t_2"], party=7, hhmm="21:00"), 422, "party_exceeds_capacity")
+    err(pb(bob, ["t_1", "t_2"], hhmm="21:00", extra={"table_id": "t_1"}), 422, "validation_failed")
+    err(pb(bob, ["t_2", "t_3"], hhmm="20:00"), 409, "table_unavailable")
+    err(book(bob, table="t_1", hhmm="19:30", party=2), 409, "table_unavailable")
+    av = call("GET", "/availability?restaurant_id=r_anker&date=%s&party_size=1" % d)[1]["slots"][2]
+    assert av["available_table_ids"] == [] and av["available_options"] == []
+    # PATCH combined -> single, and cancel frees all
+    p = call("PATCH", "/reservations/" + s[1]["reference"], {"table_ids": ["t_2"], "party_size": 4}, ada)
+    assert p[0] == 200 and p[1]["table_id"] == "t_2", p
+    assert book(bob, table="t_1", hhmm="19:00", party=2)[0] == 201
+    p = call("PATCH", "/reservations/" + s[1]["reference"], {"table_ids": ["t_2", "t_3"], "party_size": 8,
+                                                             "starts_at_local": d + "T21:00"}, ada)
+    assert p[0] == 200 and p[1]["table_ids"] == ["t_2", "t_3"], p
+    call("POST", "/reservations/%s/cancel" % s[1]["reference"], token=ada)
+    av = call("GET", "/availability?restaurant_id=r_anker&date=%s&party_size=1" % d)[1]["slots"][6]
+    assert av["available_table_ids"] == ["t_1", "t_2", "t_3"], av
+    # moves with table_ids: swap a pair booking and a single
+    a = pb(ada, ["t_1", "t_2"], hhmm="21:30")[1]
+    b = book(ada, table="t_3", hhmm="21:30", party=2)[1]
+    mv = call("POST", "/reservation-moves", {"moves": [
+        {"reference": a["reference"], "table_ids": ["t_2", "t_3"]},
+        {"reference": b["reference"], "table_id": "t_1"}]}, ada, k())
+    assert mv[0] == 201 and [x["table_ids"] for x in mv[1]["reservations"]] == [["t_2", "t_3"], ["t_1"]], mv
+    err(call("POST", "/reservation-moves", {"moves": [
+        {"reference": b["reference"], "table_ids": ["t_2"]}]}, ada, k()), 409, "table_unavailable")
+    # concurrent pair vs single on a member
+    reset([r])
+    ada, bob = login(), login("bob@example.com")
+    for _ in range(3):
+        out = []
+        hh = ["18:00", "19:30", "21:00"][_]
+        ths = [threading.Thread(target=lambda: out.append(pb(ada, ["t_1", "t_2"], hhmm=hh))),
+               threading.Thread(target=lambda: out.append(book(bob, table="t_2", hhmm=hh, party=2)))]
+        [t.start() for t in ths]
+        [t.join() for t in ths]
+        assert sorted(x[0] for x in out) == [201, 409], out
+
+
+@test
+def stage1_export_import():
+    reset()
+    ada = login()
+    ex = call("GET", "/_test/export")[1]
+    st = ex["state"]
+    for rec in st["reservations"].values():
+        pass
+    # simulate a stage-1 export: drop combinable, table_ids -> table_id
+    first = book(ada, hhmm="19:00")
+    ex = call("GET", "/_test/export")[1]
+    for rest in ex["state"]["restaurants"].values():
+        rest.pop("combinable", None)
+    for rec in ex["state"]["reservations"].values():
+        rec["table_id"] = rec.pop("table_ids")[0]
+    reset()
+    assert call("POST", "/_test/import", ex)[0] == 204
+    got = call("GET", "/reservations/" + first[1]["reference"], token=ada)
+    assert got[0] == 200 and got[1]["table_id"] == "t_2", got
+    err(book(ada, hhmm="19:00"), 409, "table_unavailable")
+
+
 if __name__ == "__main__":
     failed = 0
     for t in TESTS:
