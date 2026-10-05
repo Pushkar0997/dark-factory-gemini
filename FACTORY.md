@@ -43,8 +43,8 @@ A **lineup** (`factory/lineups.toml`) maps the three roles onto real Band seats:
 
 | Lineup | coordinator | implementer | reviewer | Status |
 |---|---|---|---|---|
-| `hybrid` (submitted default) | `gemini_planner` — Google ADK via `factory-seat`, `gemini-3.8-flash` | `Implementer` — Claude Code, `claude-sonnet-5-5` | `Reviewer` — Claude Code, `claude-sonnet-5-5` | coordinator path not yet rehearsed live (needs a Gemini key) |
-| `claude` | `Planner` — Claude Code | `Implementer` — Claude Code | `Reviewer` — Claude Code | rehearsed on the toy track (§11) |
+| `hybrid` (recommended) | `gemini_planner` — Google ADK via `factory-seat`, `gemini-3.8-flash` | `Implementer` — Claude Code, `claude-sonnet-5-5` | `Reviewer` — Claude Code, `claude-sonnet-5-5` | coordinator path not yet rehearsed live (needs a Gemini key) |
+| `claude` (**judged run**) | `Planner` — Claude Code, `claude-sonnet-5-5` | `Implementer` — Claude Code, `claude-opus-5-5` | `Reviewer` — Claude Code, `claude-opus-5-5` | toy rehearsed (on sonnet); used for the judged tablekeeper run |
 | `gemini` | Google ADK | Google ADK + workspace tools | Google ADK + workspace tools | experimental, not rehearsed |
 
 Why hybrid: the coordinator reads, plans and routes — a messaging-plus-read-only toolset on a

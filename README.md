@@ -5,8 +5,9 @@ A generic **coordinator → implementer → reviewer** software factory for
 hackathon on the **`tablekeeper`** track.
 
 Seats can run on **Claude Code** (Band Desktop runtimes), **Google ADK / Gemini** (this repo's
-`factory-seat` runner, with sandboxed workspace tools), or a mix. The submitted lineup is
-**hybrid**: a Gemini coordinator with Claude Code implementer and reviewer.
+`factory-seat` runner, with sandboxed workspace tools), or a mix. The judged run used the
+**claude** lineup (no Gemini key was available at dispatch); **hybrid** (Gemini coordinator +
+Claude Code implementer/reviewer) is the recommended lineup when a Gemini key is present.
 
 | Read | For |
 |---|---|

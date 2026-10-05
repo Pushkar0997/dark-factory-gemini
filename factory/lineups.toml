@@ -24,8 +24,8 @@ reviewer    = { name = "Reviewer", handle = "reviewer", harness = "Claude Code",
 [lineups.claude]
 description = "All three seats on Claude Code in Band Desktop. Needs no Gemini key; used for the toy rehearsal."
 coordinator = { name = "Planner", handle = "planner", harness = "Claude Code", model = "claude-sonnet-5-5", band_as = "amaansayydd/planner" }
-implementer = { name = "Implementer", handle = "implementer", harness = "Claude Code", model = "claude-sonnet-5-5", band_as = "amaansayydd/implementer" }
-reviewer    = { name = "Reviewer", handle = "reviewer", harness = "Claude Code", model = "claude-sonnet-5-5", band_as = "amaansayydd/reviewer" }
+implementer = { name = "Implementer", handle = "implementer", harness = "Claude Code", model = "claude-opus-5-5", band_as = "amaansayydd/implementer" }
+reviewer    = { name = "Reviewer", handle = "reviewer", harness = "Claude Code", model = "claude-opus-5-5", band_as = "amaansayydd/reviewer" }
 
 [lineups.gemini]
 description = "All three seats on Google ADK via this repo's runner. The implementer and reviewer get the sandboxed workspace tools (files + shell) from factory/workspace_tools.py. Needs three Band agents created for SDK use and a Gemini key. Experimental: not rehearsed end to end."

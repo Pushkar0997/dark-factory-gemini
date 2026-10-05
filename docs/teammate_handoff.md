@@ -1,7 +1,7 @@
 # Teammate handoff — read this first
 
 Last updated: 2026-10-05 (UTC morning). Deadline: **Mon 2026-10-05 23:59 PDT** (= Tue 06:59 UTC).
-Track: **tablekeeper** ([why](decisions.md#d1--track-tablekeeper)). Submitted lineup: **hybrid**.
+Track: **tablekeeper** ([why](decisions.md#d1--track-tablekeeper)). Judged run lineup: **claude** (Planner sonnet-5-5, Implementer + Reviewer opus-5-5) — no Gemini key was available at dispatch time. Judged room `7c5f1e66-ce31-4567-a0d5-3048c5ccef3a`, repo `~/band-work/tk-final`, dispatched 06:42 UTC.
 
 ## 1. Current state (be honest, keep it current)
 
