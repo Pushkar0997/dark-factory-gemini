@@ -103,11 +103,10 @@ Spend $2.92 (list-price estimate). Not exercised: a rejection (none was needed).
 uv run python scripts/run_checks.py --repo ~/band-work/tk-final --track tablekeeper --stage 1 --isolated --out ~/band-work/checks/tk-final-s1
 # then re-read each claimed stage's spec section and probe what the shipped checks never ask
 
-# record the room (Band console → Download full session), then:
-mv ~/Downloads/<room>.json ~/band-work/tk-final/room.json
-grep -nE "band_a_|sk-|AIza|ghp_|Bearer [A-Za-z0-9]{20}" ~/band-work/tk-final/room.json   # rotate + [REDACTED] anything found
-git -C ~/band-work/tk-final add room.json && git -C ~/band-work/tk-final commit -m "room.json: full session download"
-# delete stage folders that do not claim their stage (only completed stages are submitted)
+# record the room (Band console → Download full session), then — copies it unchanged,
+# refuses on any credential hit, commits it in the result repo, previews gates 1-2:
+scripts/import_room.sh ~/Downloads/<room>.json ~/band-work/tk-final tablekeeper
+# stage folders that do not claim their stage must be removed (none in tk-final: all 4 claim)
 
 scripts/assemble_submission.sh ~/band-work/tk-final tablekeeper     # merges band history into this repo
 uv run python scripts/run_checks.py --repo . --track tablekeeper --stage all --isolated
