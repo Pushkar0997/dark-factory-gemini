@@ -20,7 +20,7 @@ Known problems: see §9.
 
 `FACTORY.md` (judged) · `mandates/` (judged; generated — never hand-edit) ·
 `factory/lineups.toml` (seat ↔ role ↔ harness ↔ model) · `factory/mandate_templates/` (role
-text) · `scripts/` (everything you run) · `docs/track-plan.md` (what to verify per stage).
+text) · `scripts/` (everything you run).
 
 ## 3. One-time machine setup
 
@@ -101,7 +101,7 @@ Spend $2.92 (list-price estimate). Not exercised: a rejection (none was needed).
 ```bash
 # per stage, isolated mode (how judging runs)
 uv run python scripts/run_checks.py --repo ~/band-work/tk-final --track tablekeeper --stage 1 --isolated --out ~/band-work/checks/tk-final-s1
-# then walk docs/track-plan.md's probe list for each claimed stage
+# then re-read each claimed stage's spec section and probe what the shipped checks never ask
 
 # record the room (Band console → Download full session), then:
 mv ~/Downloads/<room>.json ~/band-work/tk-final/room.json

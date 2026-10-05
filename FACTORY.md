@@ -222,6 +222,7 @@ Only measured numbers are recorded here.
 
 | Run | Lineup | Result | Wall time | Spend (Band `usage rooms`, list-price estimate, not a bill) |
 |---|---|---|---|---|
+| **judged tablekeeper run**, room `7c5f1e66…`, 2026-10-05 | claude: coordinator `claude-sonnet-5-5`, implementer + reviewer `claude-opus-5-5` (confirmed from the seats' transcripts) | stage 1 approved at `d67a068` after one rejection (below); stage 2 in progress at time of writing | stage 1: **14 min 22 s** dispatch (06:42:35 UTC) → `STAGE 1 OUTCOME: approved` (06:56:57), no human input. Then idle 3 h 49 min on a provider usage limit (§12) | snapshot 13:07 UTC: 13.0 M tokens, **$9.74**: implementer $5.38 · reviewer $3.39 · coordinator $0.98 |
 | toy rehearsal 1, 2026-10-05 | claude, all `claude-sonnet-5-5` | 4/4 stages approved by the reviewer; operator re-check `harness run --all --mode isolated`: every folder claims its stage | 23 min 40 s dispatch → final report, of which ~7.6 min stalled on a full host disk (see §12) | 7.73 M tokens, **$2.92**: implementer $1.12 · reviewer $1.06 · coordinator $0.74 |
 
 Toy rehearsal 1 exercised: seat self-recruitment by the coordinator, verbatim self-contained
@@ -230,6 +231,19 @@ one per extension, reviewer verification on a clean worktree in host and isolate
 (including the stage-2 browser suite), machine-failure escalation as a recorded blocker.
 It did **not** exercise a rejection: every revision passed review first time on this small
 problem. The real track is where the reject → fix loop is expected to matter.
+
+**A bad result the factory caught (judged run, stage 1).** The implementer reported
+`cdfdb64` (full API, its own tests passing, shipped harness green). The reviewer rebuilt it
+from a clean worktree, probed beyond the shipped checks, and answered
+`VERDICT tablekeeper-stage-1 cdfdb647…: CHANGES REQUIRED` with three defects, each with a
+reproduce command: **D1** 500 responses at calendar edges, **D2** HEAD/OPTIONS returning
+non-JSON errors, **D3** a non-integer `party_size` accepted on PATCH and moves. The
+coordinator sent `FIX REQUEST tablekeeper-stage-1 (cycle 1 of max 4)` with the full defect
+list; the implementer fixed all three with regression tests in `d67a068`
+(`fix D1 calendar-edge 500s, D2 HEAD/OPTIONS JSON errors, D3 non-integer party_size on
+PATCH/moves`); the coordinator sent a `RE-REVIEW HANDOFF`; the reviewer re-verified and
+approved. Elapsed from verdict to approval: about 4 minutes. None of the three defects was
+caught by the shipped checks.
 
 ## 12. Design trade-offs and what did not work
 
@@ -252,6 +266,16 @@ problem. The real track is where the reject → fix loop is expected to matter.
   refused to prune data it did not own; the coordinator recorded `STAGE 1 OUTCOME: blocked`
   without asking the human. Mandates now also require seats to remove only the containers
   and images they created, and `prepare_run.sh` refuses to start with < 10 GiB free.
+- **A provider usage limit stalled the run, and a human restarted it (judged run).** At
+  07:03 UTC the implementer's Claude Code turn failed with `You've hit your session limit ·
+  resets 4:20pm`. Band recorded the failed turn, but nothing in the factory re-wakes a seat
+  when the limit resets, and the coordinator only acts on incoming messages, so all three
+  seats sat idle for 3 h 49 min. At 10:52 UTC the operator posted `continue your work` to the
+  three seats. **That message is human input after dispatch: stage 1 is a clean dark-factory
+  run; stage 2 onward in this room is not, and we do not claim it is.** Fixes we would make:
+  a watchdog that re-posts the last handoff to a seat whose turn failed with a rate or usage
+  limit once the limit resets (the same duplicate-safe resume `factory-seat` already does for
+  Gemini 429s), and a cheaper model on the implementer for long runs.
 - **Reviewer runs the harness on its own worktree (learned).** In the rehearsal the reviewer
   built from a clean worktree but pointed the harness at the shared repository; the mandate
   now requires the worktree so the result belongs to the exact hash.
@@ -264,6 +288,8 @@ problem. The real track is where the reject → fix loop is expected to matter.
   the API from this machine (no key present at the time of writing); `factory-seat` verifies
   it at startup.
 - The all-Gemini lineup is untested end to end.
+- No automatic resume after a Claude Code usage limit (see §12): a long unattended run on a
+  subscription can stop until a human nudges it, which breaks autonomy.
 - `agent_config.yaml` entries `gemini_builder`/`gemini_reviewer` currently point at agents
   whose Band Desktop seats are Claude Code; dedicated agents are needed for the gemini lineup.
 - Long specifications are pasted into handoffs in parts; a coordinator model with a small

@@ -15,7 +15,6 @@ Claude Code implementer/reviewer) is the recommended lineup when a Gemini key is
 | [mandates/](mandates/) | one mandate per seat, generic, with its harness and model |
 | [docs/teammate_handoff.md](docs/teammate_handoff.md) | current status, exact commands, run book |
 | [docs/decisions.md](docs/decisions.md) | track choice and other decisions, with evidence |
-| [docs/track-plan.md](docs/track-plan.md) | what each tablekeeper stage demands, and what reviewers must probe |
 | `stage-1/` … `stage-4/`, `room.json` | **produced by the band** in the judged run and merged in; never hand-written |
 
 ## Layout
