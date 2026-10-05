@@ -204,6 +204,28 @@ def mobile_no_horizontal_scroll(page):
     page.set_viewport_size({"width": 1280, "height": 800})
 
 
+@test
+def policy_seat_labels(page):
+    r = restaurant()
+    r["manager_user_ids"] = ["u_ada"]
+    r["combinable"] = [["t_1", "t_2"]]
+    assert call("POST", "/_test/reset", {"users": USERS, "restaurants": [r], "reservations": []})[0] == 204
+    ada = call("POST", "/auth/login", {"email": "ada@example.com", "password": "correct horse"})[1]["token"]
+    pol = {"effective_from": day(), "slot_minutes": 30, "reservation_duration_minutes": 90,
+           "cancellation_cutoff_minutes": 120,
+           "opening_hours": [{"weekday": w, "opens": "18:00", "closes": "23:00"}
+                             for w in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")],
+           "capacities": {"t_1": 6, "t_2": 1, "t_3": 6}}
+    assert call("POST", "/restaurants/r_anker/policies", pol, ada, "pol-ui")[0] == 201
+    search(page, 3)
+    page.wait_for_selector(sel("availability-grid"))
+    assert "6 seats" in page.text_content(sel("slot-t_1-19:00"))
+    assert page.get_attribute(sel("slot-t_1-19:00"), "data-available") == "true"
+    t2 = page.text_content(sel("slot-t_2-19:00"))
+    assert "1 seat" in t2 and "too small" in t2, t2
+    assert "7 seats" in page.text_content(sel("slot-t_1+t_2-19:00"))
+
+
 if __name__ == "__main__":
     failed = 0
     with sync_playwright() as p:

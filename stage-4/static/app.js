@@ -291,7 +291,8 @@
     }
     var q = "/availability?restaurant_id=" + encodeURIComponent(params.restaurant) +
       "&date=" + encodeURIComponent(params.date) + "&party_size=" + encodeURIComponent(params.party) + "&explain=true";
-    Promise.all([api("GET", "/restaurants/" + encodeURIComponent(params.restaurant)), api("GET", q)]).then(function (rs) {
+    Promise.all([api("GET", "/restaurants/" + encodeURIComponent(params.restaurant)), api("GET", q),
+      api("GET", "/restaurants/" + encodeURIComponent(params.restaurant) + "/policies")]).then(function (rs) {
       if (seq !== searchSeq || token !== pageToken) return; // a newer search owns the screen
       var d = rs[0], a = rs[1];
       if (d.status !== 200 || a.status !== 200) {
@@ -300,13 +301,29 @@
           a.status === 422 ? "Please choose a restaurant, a valid date and a party size of at least 1." : errorText(a.body || d.body)));
         return;
       }
-      current = { params: params, detail: d.body, availability: a.body };
+      current = { params: params, detail: d.body, availability: a.body,
+        capacities: capacitiesFor(d.body, rs[2].status === 200 ? rs[2].body.policies : [], params.date) };
       renderGrid();
     }, function () {
       if (seq !== searchSeq || token !== pageToken) return;
       if (!keepForm) clear(results).appendChild(h("p", { class: "notice notice-error", role: "alert" },
         "We couldn't reach Tablekeeper. Check your connection and search again."));
     });
+  }
+
+  // Seat counts in force on a date: the published policy with the greatest effective_from
+  // not later than the date (ties: greatest version), else the restaurant's own tables.
+  function capacitiesFor(detail, policies, date) {
+    var best = null;
+    (policies || []).forEach(function (p) {
+      if (p.effective_from > date) return;
+      if (!best || p.effective_from > best.effective_from ||
+          (p.effective_from === best.effective_from && p.policy_version > best.policy_version)) best = p;
+    });
+    if (best) return best.capacities;
+    var caps = {};
+    (detail.tables || []).forEach(function (t) { caps[t.id] = t.capacity; });
+    return caps;
   }
 
   function tableLabel(detail, id) {
@@ -333,7 +350,7 @@
       var cells = h("div", { class: "cells" });
       (detail.tables || []).forEach(function (t) {
         var free = slot.available_table_ids.indexOf(t.id) >= 0;
-        cells.appendChild(cell(slot, [t.id], free, t.capacity, false));
+        cells.appendChild(cell(slot, [t.id], free, current.capacities[t.id], false));
       });
       (slot.available_options || []).forEach(function (opt) {
         if (opt.table_ids.length === 2) cells.appendChild(cell(slot, opt.table_ids, true, opt.capacity, true));
@@ -362,7 +379,7 @@
       "aria-pressed": isSel ? "true" : "false",
       "aria-label": label + " at " + at + (free ? ", available" : ", taken") + ", " + capacity + " seats",
       onclick: function () { if (free) openForm(slot, ids); }
-    }, h("b", {}, label), h("small", {}, capacity + " seats" + (combo ? " · combined" : "") + (free ? "" : (tooSmall(slot, ids) ? " · too small" : " · taken"))));
+    }, h("b", {}, label), h("small", {}, capacity + (capacity === 1 ? " seat" : " seats") + (combo ? " · combined" : "") + (free ? "" : (tooSmall(slot, ids) ? " · too small" : " · taken"))));
     return b;
   }
 

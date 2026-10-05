@@ -14,3 +14,4 @@ BASE=http://localhost:8080 python3 tests/test_api.py
 
 Browser UI: open http://localhost:8080/ (screens `/`, `/signup`, `/login`, `/lookup`). All assets are served from the container.
 Stage-3 tests: `BASE=http://localhost:8080 python3 tests/test_stage3.py` (browser tests: `tests/test_ui.py`, needs Playwright).
+Stage-4 tests: `BASE=http://localhost:8080 python3 tests/test_stage4.py`.
