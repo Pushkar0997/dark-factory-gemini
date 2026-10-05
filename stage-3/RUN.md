@@ -1,7 +1,7 @@
-# Tablekeeper stage 2
+# Tablekeeper stage 3
 
 ```sh
-docker build -t tablekeeper-s2 . && docker run --rm -e PORT=8080 -p 8080:8080 tablekeeper-s2
+docker build -t tablekeeper-s3 . && docker run --rm -e PORT=8080 -p 8080:8080 tablekeeper-s3
 ```
 
 The service listens on `0.0.0.0:$PORT` (default 8080). No other setup is needed; state is in memory.
@@ -13,3 +13,4 @@ BASE=http://localhost:8080 python3 tests/test_api.py
 ```
 
 Browser UI: open http://localhost:8080/ (screens `/`, `/signup`, `/login`, `/lookup`). All assets are served from the container.
+Stage-3 tests: `BASE=http://localhost:8080 python3 tests/test_stage3.py` (browser tests: `tests/test_ui.py`, needs Playwright).

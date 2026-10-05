@@ -108,3 +108,4 @@ button { font: inherit; cursor: pointer; }
   .booking { position: static; }
   h1 { font-size: 1.55rem; }
 }
+.cell.selected, .cell.selected:hover { background: var(--brand); border-color: var(--brand); color: #fff; }

@@ -290,7 +290,7 @@
       clear(results).appendChild(h("p", { class: "loading", role: "status" }, "Checking availability…"));
     }
     var q = "/availability?restaurant_id=" + encodeURIComponent(params.restaurant) +
-      "&date=" + encodeURIComponent(params.date) + "&party_size=" + encodeURIComponent(params.party);
+      "&date=" + encodeURIComponent(params.date) + "&party_size=" + encodeURIComponent(params.party) + "&explain=true";
     Promise.all([api("GET", "/restaurants/" + encodeURIComponent(params.restaurant)), api("GET", q)]).then(function (rs) {
       if (seq !== searchSeq || token !== pageToken) return; // a newer search owns the screen
       var d = rs[0], a = rs[1];
@@ -362,8 +362,14 @@
       "aria-pressed": isSel ? "true" : "false",
       "aria-label": label + " at " + at + (free ? ", available" : ", taken") + ", " + capacity + " seats",
       onclick: function () { if (free) openForm(slot, ids); }
-    }, h("b", {}, label), h("small", {}, capacity + " seats" + (combo ? " · combined" : "") + (free ? "" : " · taken")));
+    }, h("b", {}, label), h("small", {}, capacity + " seats" + (combo ? " · combined" : "") + (free ? "" : (tooSmall(slot, ids) ? " · too small" : " · taken"))));
     return b;
+  }
+
+  // The policy-aware reason a single table is unavailable (from explain=true).
+  function tooSmall(slot, ids) {
+    var e = (slot.explain || []).filter(function (x) { return x.table_id === ids[0]; })[0];
+    return !!(e && ids.length === 1 && !e.rules[0].holds);
   }
 
   function openForm(slot, ids) {
