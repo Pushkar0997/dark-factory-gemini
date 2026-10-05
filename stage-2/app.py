@@ -809,6 +809,28 @@ def h_import(body):
 
 # ---------------------------------------------------------------- HTTP
 
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+SCREENS = ("/", "/signup", "/login", "/lookup")
+STATIC_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
+                ".js": "application/javascript; charset=utf-8", ".svg": "image/svg+xml"}
+
+
+def static_file(name):
+    """Return (bytes, content type) for a file in STATIC_DIR, or None."""
+    if "/" in name or name.startswith(".") or os.path.splitext(name)[1] not in STATIC_TYPES:
+        return None
+    path = os.path.join(STATIC_DIR, name)
+    if not os.path.isfile(path):
+        return None
+    with open(path, "rb") as f:
+        return f.read(), STATIC_TYPES[os.path.splitext(name)[1]]
+
+
+class Page:
+    def __init__(self, data, ctype):
+        self.data, self.ctype = data, ctype
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "tablekeeper"
@@ -817,11 +839,17 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def send(self, status, obj=None):
-        body = b"" if obj is None else json.dumps(obj, ensure_ascii=False).encode("utf-8")
         head = getattr(self, "command", None) == "HEAD"
+        if isinstance(obj, Page):
+            body, ctype = obj.data, obj.ctype
+        else:
+            body = b"" if obj is None else json.dumps(obj, ensure_ascii=False).encode("utf-8")
+            ctype = "application/json; charset=utf-8"
         self.send_response(status)
         if obj is not None:
-            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Type", ctype)
+            if isinstance(obj, Page):
+                self.send_header("Cache-Control", "no-cache")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         if body and not head:
@@ -861,6 +889,13 @@ class Handler(BaseHTTPRequestHandler):
         if method == "GET":
             if path == "/health":
                 return 200, {"status": "ok"}
+            if path in SCREENS:
+                return 200, Page(*static_file("index.html"))
+            if len(seg) == 2 and seg[0] == "static":
+                found = static_file(seg[1])
+                if found is None:
+                    raise not_found("no such file")
+                return 200, Page(*found)
             if path == "/restaurants":
                 return h_restaurants()
             if len(seg) == 2 and seg[0] == "restaurants":
