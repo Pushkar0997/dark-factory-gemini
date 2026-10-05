@@ -1,0 +1,34 @@
+# Seat lineups for the factory.
+#
+# A lineup maps the three factory roles (coordinator, implementer, reviewer) onto real
+# Band Desktop seats. `scripts/render_mandates.py --lineup <name>` writes one mandate per
+# seat into mandates/ (file name = seat display name, lowercased, punctuation removed —
+# the rule `harness check` applies), filling in the handles, harness and model below.
+# `scripts/apply_lineup.py --lineup <name>` pins the same model on the Band Desktop
+# runtime of every Claude Code seat, so the mandate and the seat cannot disagree.
+#
+#   name     = the seat's display name exactly as the Band room shows it
+#   handle   = the short @handle the other seats use for it
+#   harness  = "Claude Code" (Band Desktop owned runtime) or "Google ADK (band-sdk)"
+#              (this repo's Python runner, `factory-seat`)
+#   model    = the exact model id the seat runs
+#   band_as  = owner/handle used with the `band` CLI (Claude Code seats only)
+#   config_key = entry in agent_config.yaml (Google ADK seats only)
+
+[lineups.hybrid]
+description = "Gemini coordinator (Google ADK, messaging + read-only workspace) with Claude Code implementer and reviewer. Recommended: the seats that write and verify code run in a full coding harness; planning runs on a cheaper, independent model family."
+coordinator = { name = "gemini_planner", handle = "gemini-planner", harness = "Google ADK (band-sdk)", model = "gemini-3.8-flash", config_key = "gemini_planner" }
+implementer = { name = "Implementer", handle = "implementer", harness = "Claude Code", model = "claude-sonnet-5-5", band_as = "amaansayydd/implementer" }
+reviewer    = { name = "Reviewer", handle = "reviewer", harness = "Claude Code", model = "claude-sonnet-5-5", band_as = "amaansayydd/reviewer" }
+
+[lineups.claude]
+description = "All three seats on Claude Code in Band Desktop. Needs no Gemini key; used for the toy rehearsal."
+coordinator = { name = "Planner", handle = "planner", harness = "Claude Code", model = "claude-sonnet-5-5", band_as = "amaansayydd/planner" }
+implementer = { name = "Implementer", handle = "implementer", harness = "Claude Code", model = "claude-sonnet-5-5", band_as = "amaansayydd/implementer" }
+reviewer    = { name = "Reviewer", handle = "reviewer", harness = "Claude Code", model = "claude-sonnet-5-5", band_as = "amaansayydd/reviewer" }
+
+[lineups.gemini]
+description = "All three seats on Google ADK via this repo's runner. The implementer and reviewer get the sandboxed workspace tools (files + shell) from factory/workspace_tools.py. Needs three Band agents created for SDK use and a Gemini key. Experimental: not rehearsed end to end."
+coordinator = { name = "gemini_planner", handle = "gemini-planner", harness = "Google ADK (band-sdk)", model = "gemini-3.8-flash", config_key = "gemini_planner" }
+implementer = { name = "gemini_builder", handle = "gemini-builder", harness = "Google ADK (band-sdk)", model = "gemini-3.8-flash", config_key = "gemini_builder" }
+reviewer    = { name = "gemini_reviewer", handle = "gemini-reviewer", harness = "Google ADK (band-sdk)", model = "gemini-3.8-flash", config_key = "gemini_reviewer" }
