@@ -33,6 +33,7 @@ scripts/
   apply_lineup.py        pin model + instructions on Band Desktop Claude Code seats
   prepare_run.sh         fresh result repo + seat config + dispatch text for a run
   run_checks.py          self-checks + official `harness check` / `harness run`
+  room_precheck.py       preview gates 1-2 on a live room before the room.json download
   assemble_submission.sh merge the band's result repo history into this repo
   fresh_clone_check.sh   the guide's pre-submission checks on a fresh clone
 tests/                   unit tests for the factory's own logic

@@ -46,6 +46,7 @@ uv run pytest -q                                            # unit tests
 uv run python scripts/apply_lineup.py --lineup hybrid --dry-run
 band list ; band status --as amaansayydd/implementer        # seat health
 band room list ; band room messages <room-id> --type text   # read a room
+uv run python scripts/room_precheck.py <room-id>            # gates 1-2 preview on a live room
 ```
 
 ## 5. What only Band Desktop (or a human) can do
