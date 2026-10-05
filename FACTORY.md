@@ -217,9 +217,16 @@ scripts/fresh_clone_check.sh <github url> <track>                     # guide's 
 
 Only measured numbers are recorded here.
 
-| Run | Lineup | What | Wall time | Model spend |
+| Run | Lineup | Result | Wall time | Spend (Band `usage rooms`, list-price estimate, not a bill) |
 |---|---|---|---|---|
-| toy rehearsal 1 (2026-10-05) | claude | 4 toy stages | in progress | not yet measured |
+| toy rehearsal 1, 2026-10-05 | claude, all `claude-sonnet-5-5` | 4/4 stages approved by the reviewer; operator re-check `harness run --all --mode isolated`: every folder claims its stage | 23 min 40 s dispatch → final report, of which ~7.6 min stalled on a full host disk (see §12) | 7.73 M tokens, **$2.92**: implementer $1.12 · reviewer $1.06 · coordinator $0.74 |
+
+Toy rehearsal 1 exercised: seat self-recruitment by the coordinator, verbatim self-contained
+handoffs with numbered checklists (R1–R39 over four stages), one commit per stage copy plus
+one per extension, reviewer verification on a clean worktree in host and isolated mode
+(including the stage-2 browser suite), machine-failure escalation as a recorded blocker.
+It did **not** exercise a rejection: every revision passed review first time on this small
+problem. The real track is where the reject → fix loop is expected to matter.
 
 ## 12. Design trade-offs and what did not work
 
@@ -237,11 +244,20 @@ Only measured numbers are recorded here.
   only verdict that matches how judging runs.
 - **Requirements checklist instead of test-driven review.** Costs coordinator tokens per
   stage; buys coverage of what the shipped checks never ask.
+- **Machine failures are outcomes, not questions (learned).** In toy rehearsal 1 the host
+  disk filled and Docker's image store failed. The implementer reported the exact error and
+  refused to prune data it did not own; the coordinator recorded `STAGE 1 OUTCOME: blocked`
+  without asking the human. Mandates now also require seats to remove only the containers
+  and images they created, and `prepare_run.sh` refuses to start with < 10 GiB free.
+- **Reviewer runs the harness on its own worktree (learned).** In the rehearsal the reviewer
+  built from a clean worktree but pointed the harness at the shared repository; the mandate
+  now requires the worktree so the result belongs to the exact hash.
 
 ## 13. Known limitations
 
 - The hybrid coordinator (Gemini) has not completed a live run yet; the toy was rehearsed on
-  the all-Claude lineup. `gemini-3.8-flash` is the configured id, not yet verified against
+  the all-Claude lineup. Its Band connection is verified (`factory-seat` connects as
+  `gemini_planner` and loads its mandate); the Gemini model call is not. `gemini-3.8-flash` is the configured id, not yet verified against
   the API from this machine (no key present at the time of writing); `factory-seat` verifies
   it at startup.
 - The all-Gemini lineup is untested end to end.

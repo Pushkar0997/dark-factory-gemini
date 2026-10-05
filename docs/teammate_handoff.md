@@ -9,7 +9,7 @@ Track: **tablekeeper** ([why](decisions.md#d1--track-tablekeeper)). Submitted li
 |---|---|
 | Factory code (`factory/`), lineups, mandate templates, scripts, unit tests | done; `run_checks.py` self-checks pass |
 | Claude Code seats `Planner`, `Implementer`, `Reviewer` in Band Desktop | configured: instructions = rendered mandates, model pinned `claude-sonnet-5-5`, cwd `~/band-work` |
-| Toy rehearsal 1 (all-Claude, room `add3e832…`, repo `~/band-work/toy-result`) | in progress — see §6 |
+| Toy rehearsal 1 (all-Claude, room `add3e832…`, repo `~/band-work/toy-result`) | **4/4 stages approved; verified by operator in isolated mode** (§6). room.json not downloaded yet |
 | Gemini coordinator (`gemini_planner` via `factory-seat`) | **not runnable yet: `.env` has no `GOOGLE_API_KEY`**; model id `gemini-3.8-flash` unverified |
 | Real tablekeeper run | not started |
 | `stage-1..4/`, `room.json` in this repo | absent by design until the real run is merged in |
@@ -74,8 +74,11 @@ self-contained HANDOFF with an R1–R14 checklist; implementer committed `e60f55
 free) and Docker's image store returned I/O errors; the implementer reported a precise
 blocker without deleting anything, and the coordinator recorded `STAGE 1 OUTCOME: blocked`
 without asking the human — correct dark-factory behaviour. The operator freed ~6 GB of caches,
-restarted Docker, and sent one resume message (allowed: rehearsals are not judged). Result of
-the resumed loop: _fill in_.
+restarted Docker, and sent one resume message (allowed: rehearsals are not judged). The
+resumed loop ran stages 1–4 without further input in ~8 min: 4 REVISION / 4 VERDICT APPROVED
+pairs, reviewer used clean worktrees, host + isolated harness, browser suite at stage 2.
+Operator re-check: `harness run --all --mode isolated` → every folder claims its stage.
+Spend $2.92 (list-price estimate). Not exercised: a rejection (none was needed).
 
 ## 7. Real run (judged) — do exactly this
 
