@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -545,6 +545,7 @@ source = { editable = "." }
 dependencies = [
     { name = "band-sdk", extra = ["google-adk"] },
     { name = "python-dotenv" },
+    { name = "tzdata" },
 ]
 
 [package.dev-dependencies]
@@ -556,6 +557,7 @@ dev = [
 requires-dist = [
     { name = "band-sdk", extras = ["google-adk"], specifier = ">=4.0.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
+    { name = "tzdata", specifier = ">=2024.1" },
 ]
 
 [package.metadata.requires-dev]

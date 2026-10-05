@@ -1,0 +1,16 @@
+# Replit Configuration for Tablekeeper Stage 4 Demo
+# Competition source of truth remains stage-4/Dockerfile and RUN.md
+
+modules = ["python-3.12"]
+run = "python stage-4/app.py"
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+run = ["python", "stage-4/app.py"]
+deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 8080
+externalPort = 80

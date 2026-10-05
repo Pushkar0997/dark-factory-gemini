@@ -63,6 +63,46 @@ uv run python scripts/run_checks.py        # factory self-checks
 
 Full setup, the toy rehearsal and the real run: [docs/teammate_handoff.md](docs/teammate_handoff.md).
 
+## Replit Live Demo Deployment (Stage 4)
+
+The repository is configured for immediate one-click deployment on [Replit](https://replit.com) to showcase the autonomous **Stage 4 Tablekeeper** application live.
+
+> **Competition Note:** Replit is purely the public presentation/demo layer. The competition Docker artifacts (`stage-4/Dockerfile`, `stage-4/RUN.md`) and historical records (`room.json`) remain the immutable source of truth.
+
+### How to Deploy on Replit
+
+1. **Import the Repository**:
+   - In Replit, select **"Create Repl"** → **"Import from GitHub"**.
+   - Paste the repository URL: `https://github.com/Pushkar0997/dark-factory-gemini`.
+2. **Automatic Configuration**:
+   - Replit reads `.replit` and `replit.nix` automatically.
+   - Run command: `python stage-4/app.py`
+   - Port binding: `0.0.0.0:$PORT` (defaults to `8080`).
+   - Dependencies: Standard library Python only + `tzdata` (automatically installed from `requirements.txt`).
+3. **Run Interactive Workspace**:
+   - Click the green **"Run"** button. The server starts and the interactive browser Webview opens to `/`.
+4. **Publish Permanent HTTPS Demo**:
+   - In the top right, click **"Deploy"**.
+   - Choose **Autoscale** (or Reserved VM / Cloud Run).
+   - Ensure the run command is `python stage-4/app.py` and port is `8080`.
+   - Click **"Deploy your Repl"** to receive a public `https://<repl-name>.<user>.replit.app` URL.
+
+### Key Routes & Verification
+
+| Route | Method | Description |
+|---|---|---|
+| `/` | `GET` | Main Tablekeeper browser UI (reservation screen & restaurant selector) |
+| `/signup` | `GET` | User account registration interface |
+| `/login` | `GET` | Authentication interface |
+| `/lookup` | `GET` | Reservation reference code lookup screen |
+| `/health` | `GET` | Service status probe (returns `{"status": "ok"}`) |
+| `/restaurants` | `GET` | Seeded restaurant catalog API (`r_anker`, `r_two`) |
+| `/availability` | `GET` | Real-time table slot availability query API |
+| `/static/app.css`, `app.js` | `GET` | Bundled styling and frontend application assets |
+
+Detailed manual and verification curl commands: [docs/replit_deployment.md](docs/replit_deployment.md).
+
 ## Team
 
 Pushkar Kumar, Amaan Sayyed.
+

@@ -10,7 +10,9 @@ requires-python = ">=3.13"
 dependencies = [
     "band-sdk[google-adk]>=4.0.0",
     "python-dotenv>=1.0",
+    "tzdata>=2024.1",
 ]
+
 
 [dependency-groups]
 dev = ["pytest>=8"]
