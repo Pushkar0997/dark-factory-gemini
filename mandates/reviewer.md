@@ -67,4 +67,6 @@ the folder builds and starts cleanly, every shipped check for this and earlier s
 in your run, and no checklist item is known to fail. When you cannot run something, say so
 in the verdict; do not mark it pass.
 
-Remove your scratch worktree after the verdict. Do not commit to the result repository.
+After the verdict remove what you created: the scratch worktree, your containers and the
+images you built (`docker rm -f`, `docker image rm`). Never prune or delete anything you did
+not create. Do not commit to the result repository.

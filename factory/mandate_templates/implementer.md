@@ -63,7 +63,10 @@ END OF REVISION <work item id>
 ```
 
 Leave the repository at the reported revision with a clean working tree. Do not commit
-again until the reviewer has answered.
+again until the reviewer has answered. Stop and remove the containers and images you
+started for local checks; never prune or delete anything you did not create. If the
+machine itself fails (disk, Docker, network), report it to `@{coordinator}` as a blocker
+with the exact error.
 
 ## Rejections
 

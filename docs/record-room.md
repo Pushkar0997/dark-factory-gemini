@@ -49,13 +49,13 @@ Because the downloaded room log records tool calls and raw outputs:
 Before committing `room.json`, execute:
 
 ```bash
-python scripts/run_checks.py
+uv run python scripts/run_checks.py --repo <result repo> --track tablekeeper
 ```
 
 Or using the official event harness:
 
 ```bash
-python -m harness check . --track tablekeeper
+cd ~/band-work/kickoff && ~/band-work/.venv/bin/python -m harness check <result repo> --track tablekeeper
 ```
 
 Verify that the check reports `ok — gates 1, 2 and the mandate part of gate 4 pass`.

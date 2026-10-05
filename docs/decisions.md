@@ -1,74 +1,79 @@
-# Architecture & Strategic Decisions
+# Decisions
 
-This document records the foundational architectural decisions made for the Gemini Multi-Agent Factory, including comparative track evaluation, model selection strategies, and compliance guarantees.
+Each entry: the decision, the evidence it rests on, and what it costs. Newest last.
 
----
+## D1 — Track: `tablekeeper`
 
-## 1. Track Evaluation & Recommendation: Tablekeeper vs. Pocketful
+**Decision.** Compete in Tablekeeper and stay there.
 
-### 1.1 Overview of Both Tracks
+**Evidence** (from `dark-factory-wearedevs`, read in full 2026-10-05):
 
-| Dimension | Tablekeeper (Restaurant Reservation Engine) | Pocketful (Wallet & Settlement Ledger) |
+| | Tablekeeper | Pocketful |
 |---|---|---|
-| **Core Domain** | Temporal intervals, table seating, cancellation policies, closure replanning | Ledger accounting, idempotent payment transfers, split arithmetic, retroactive adjustments |
-| **Stage 1 Scope** | Idempotent bookings, interval collision prevention, atomic multi-reservation moves, export/import | Idempotent transfers, balance invariant conservation (no money created/destroyed/negative), net settlements |
-| **Stage 2 Scope** | Browser availability grid, combined-table allocations, stale state recovery | Browser payment feed, holds/captures, split requests, stale state recovery |
-| **Stage 3 Scope** | Effective-dated cancellation policies, recurring series with exceptions, truthful history | Immutable payment corrections, historical vs. settlement date views, snapshot pagination |
-| **Stage 4 Scope** | Deterministic closure replanning preview and atomic batch application | Refunds from available funds, operator batch corrections across complete settlements |
-| **Shipped Check %** | S1: 83%, S2: 41%, S3: 11%, S4: 21% | S1: 79%, S2: 35%, S3: 9%, S4: 16% |
+| Spec size, stages 1/2/3/4 (bytes) | 19.4k / 10.5k / 13.1k / 6.3k | 24.5k / 19.7k / 10.1k / 4.4k |
+| Shipped share of graded checks, stages 1/2/3/4 | **83 / 41 / 11 / 21 %** | 79 / 35 / 9 / 16 % |
+| Shipped test functions, stage 1 / 2 | 91 / 22 | 91 / 31 |
+| Stage-2 UI surface | 4 routes: search+grid, signup, login, lookup | 4 routes + authorizations screen, feed, requests, split |
+| Hardest stage-1 trap | DST (spring-forward gap, fall-back first occurrence), slot grid | exact split arithmetic, net settlements |
+| Hardest late-stage item | stage-4 bounded replanning (≤6 tables, ≤4 pairs, ≤6 bookings: brute force is fine) | stage-3 bitemporal statements with snapshot-stable pagination |
 
----
+**Why.** With roughly a day left, the realistic scoring range is stages 1–2, maybe 3.
+Tablekeeper's stage 1 and 2 are the smaller specs with the larger shipped share, so the
+reviewer gets more real feedback per run, and its stage-2 UI (an availability grid) is a
+stronger demo with fewer screens. Its traps (DST, idempotency, atomic moves) are precisely
+specified, so a reviewer working from a requirements checklist can probe them. Stage 4's
+planning problem is explicitly bounded, so exhaustive search is acceptable.
 
-### 1.2 Invariant Analysis & Risk Profile
+**Cost.** Time-zone handling must be right in every later stage; a DST bug in stage 1 caps
+the chain. The reviewer mandate's "probe what the shipped checks do not" step exists for this.
 
-#### Pocketful Risk Profile
-- **Financial Conservation Invariant**: Every transaction must strictly conserve seeded money across all wallets. Balances cannot go negative, even transiently.
-- **Floating-Point & Rounding Traps**: Split bills must distribute remainders deterministically across minor units (cents). Any deviation immediately invalidates the entire ledger.
-- **Race Condition Vulnerability**: Concurrent transfers between mutual wallets can easily trigger deadlocks or transient balance underflows unless strict transaction ordering or lock hierarchy is enforced.
-- **Hidden Test Hazard**: Only 9% of Stage 3 checks and 16% of Stage 4 checks are shipped. Subtle ledger accounting edge cases in hold expirations and partial captures are highly likely to fail on hidden judge tests.
+## D2 — Harness: hybrid lineup, Claude Code seats write and verify code
 
-#### Tablekeeper Risk Profile
-- **Interval Collision Invariant**: Confirmed bookings must never overlap on the same table during the half-open interval `[starts_at, starts_at + duration)`.
-- **Relational Alignment**: Interval overlap queries map naturally to standard transactional database constructs (e.g., SQLite with `WHERE table_id = ? AND NOT (ends_at <= ? OR starts_at >= ?)`).
-- **Stage 4 Feasibility**: The Stage 4 closure-replanning problem requires a deterministic matching heuristic (preserving as many bookings as possible within capacity rules). While algorithmic, it is self-contained and avoids distributed financial edge cases.
-- **Shipped Check Feedback**: Tablekeeper provides higher visibility on shipped checks across every stage (83% vs 79% in Stage 1; 41% vs 35% in Stage 2; 11% vs 9% in Stage 3; 21% vs 16% in Stage 4), giving our automated Reviewer better feedback loops during the live run.
+**Evidence.** The Band SDK's `GoogleADKAdapter` bridges only Band platform tools (send
+message, participants, memory, …) — checked in `band/adapters/google_adk.py`
+(`_build_adk_tools`). The previous Gemini builder/reviewer therefore could not write a file,
+commit, or run a check. All six seats configured in Band Desktop run `claude-code-cli`
+(`band status`), including the one named `gemini-planner`.
 
----
+**Decision.** Support three lineups (`factory/lineups.toml`) and recommend **hybrid**:
+a Gemini coordinator (Google ADK through `factory-seat`) plus Claude Code implementer and
+reviewer. The coordinator's job is reading specs, writing a requirements checklist and
+routing — work that fits a messaging-plus-read-only toolset and a cheaper, different model
+family. The two seats that must edit, build, commit and run Docker use a full coding harness.
+`factory/workspace_tools.py` gives Gemini seats sandboxed files + shell, so an all-Gemini
+lineup is possible, but it has not been rehearsed (see FACTORY.md "Known limitations").
 
-### 1.3 Strategic Recommendation: Tablekeeper
+**Cost.** Two runtimes to operate, and the Gemini coordinator depends on a Gemini key and its
+rate limits. The all-Claude lineup remains a one-command fallback (`prepare_run.sh … claude …`).
 
-**Recommendation: Target the `tablekeeper` track.**
+## D3 — Mandates are rendered from generic role templates
 
-**Rationale**:
-1. **Mathematical Cleanliness vs. Financial Traps**: Interval collision math is strictly defined and verifiable via standard range checks. Financial ledger systems have numerous non-obvious traps around hold release timing, retroactive settlement adjustments, and rounding distribution.
-2. **Reviewer Testability**: The Reviewer can easily generate synthetic boundary conditions for Tablekeeper (e.g., back-to-back 90-minute bookings at 19:00 and 20:30, adjacent party size constraints, timezone normalization) to probe code robustness beyond the shipped checks.
-3. **Multi-Agent Suitability**: Decomposing restaurant tables, combined-table graph allocation (Stage 2), and cancellation cutoff policies (Stage 3) creates clean, well-bounded modules that `@Planner` can delegate to `@Builder` with low ambiguity.
+**Decision.** `factory/mandate_templates/{coordinator,implementer,reviewer}.md` hold the
+role text; a lineup fills in seat names, handles, harness and model; `render_mandates.py`
+writes `mandates/<seat-slug>.md`; `apply_lineup.py` pins the same model and instructions on
+the Band Desktop seats; `factory-seat` refuses to start a Gemini seat whose model differs
+from its mandate unless `--allow-fallback` is given.
 
-*Note: The factory repository remains strictly track-agnostic. No Tablekeeper-specific code or vocabulary is baked into mandates or factory runtime code.*
+**Why.** Gate 1 needs one mandate per seat *named after the seat* with the true harness and
+model; Gate 4 needs zero track vocabulary. Hand-maintained copies had already drifted (six
+files for three roles, all declaring a harness no seat ran). One template per role keeps them
+generic, and `run_checks.py` scans them against the organisers' own vocabulary list.
 
----
+## D4 — The band works in a separate result repo; the submission merges it
 
-## 2. Model Selection & Compliance Strategy
+**Decision.** Seats commit only into a fresh `~/band-work/<run>/` repository
+(`prepare_run.sh`). After the run, `room.json` is committed there and
+`assemble_submission.sh` merges that history into this repository with
+`--allow-unrelated-histories` — no rebase, squash or amend, so every band commit keeps its
+hash, author and message.
 
-### 2.1 The Gate 1 Mandate Challenge
-Official Hackathon Eligibility Gate 1 requires:
-- Each mandate file in `mandates/` must state the exact `Harness` and `Model` that the seat executes.
-- If a factory dynamically falls back to different models at runtime without updating mandates, the declared model differs from the actual model executed in `room.json`, creating an eligibility violation risk.
+**Why.** The guide wants a fresh result repository per judged run, seats that cannot touch
+the factory's own files, and a pushed history the seats made. The hand-written
+`stage-1..4/` placeholders previously committed here were removed: anything under
+`stage-N/` must come from the band.
 
-### 2.2 Centralized Model Architecture
-- **Primary Configuration**:
-  - Planner: `gemini-3.8-flash`
-  - Builder: `gemini-3.8-flash`
-  - Reviewer: `gemini-3.8-flash-lite` (or `gemini-3.8-flash`)
-- **Strict Mode (Default)**: During judged execution, each agent runs strictly with its assigned model. If the model API is unavailable, the process logs a fatal error rather than silently masking the failure with an undeclared model.
-- **Development Fallback Mode**: The `--allow-fallback` CLI flag is available exclusively during iterative testing. If used, any model change must be synchronized back into `mandates/<seat>.md` prior to the official recorded room run.
+## D5 — Workspace paths without spaces or `:`
 
----
-
-## 3. Separation of Responsibilities
-
-| Invariant | Rationale |
-|---|---|
-| **Planner does not code** | If the Planner edits code, the system collapses into a single-agent architecture, violating the 25% Agent Teamwork rubric requiring distributed effort. |
-| **Builder does not approve** | Self-approval defeats quality assurance. True teamwork requires a distinct verification step that can reject defective work. |
-| **Reviewer does not fix** | If the Reviewer applies patches, the defect correction loop is bypassed, leaving no room evidence that feedback changed the outcome. |
+The original checkout lives under `Hackathon - 6:10/`. `uv sync` refuses that path (`path
+segment contains separator ':'`) and agent shell commands quote paths inconsistently. All
+run state lives under `~/band-work/`; clone the factory to a plain path for real use.

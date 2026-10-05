@@ -1,218 +1,128 @@
-# 🤝 Teammate Handoff & Operator Manual
+# Teammate handoff — read this first
 
-**Target Audience**: Any engineer taking over the Gemini Dark Factory project.  
-**Hackathon**: [WeAreDevelopers × BAND: Dark Factory Hackathon](https://lablab.ai/ai-hackathons/wearedevelopers-hackathon)  
-**Track Recommendation**: `tablekeeper` (see rationale in [`docs/decisions.md`](file:///d:/Coding_Work/dark-factory-gemini/docs/decisions.md))  
+Last updated: 2026-10-05 (UTC morning). Deadline: **Mon 2026-10-05 23:59 PDT** (= Tue 06:59 UTC).
+Track: **tablekeeper** ([why](decisions.md#d1--track-tablekeeper)). Submitted lineup: **hybrid**.
 
----
+## 1. Current state (be honest, keep it current)
 
-## 1. Executive Summary & Current State
+| Item | State |
+|---|---|
+| Factory code (`factory/`), lineups, mandate templates, scripts, unit tests | done; `run_checks.py` self-checks pass |
+| Claude Code seats `Planner`, `Implementer`, `Reviewer` in Band Desktop | configured: instructions = rendered mandates, model pinned `claude-sonnet-5-5`, cwd `~/band-work` |
+| Toy rehearsal 1 (all-Claude, room `add3e832…`, repo `~/band-work/toy-result`) | in progress — see §6 |
+| Gemini coordinator (`gemini_planner` via `factory-seat`) | **not runnable yet: `.env` has no `GOOGLE_API_KEY`**; model id `gemini-3.8-flash` unverified |
+| Real tablekeeper run | not started |
+| `stage-1..4/`, `room.json` in this repo | absent by design until the real run is merged in |
 
-The foundation of the factory is **complete, verified offline, and strictly compliant** with the official hackathon rules. 
+Known problems: see §9.
 
-We have deliberately avoided shortcuts:
-- **No fake code**: We have **NOT** pre-written application code in `stage-1/` through `stage-4/`. The hackathon requires all implementation code to be created autonomously by the agents during the live room session.
-- **No synthetic evidence**: We have **NOT** fabricated `room.json`. That file must come directly from your live Band Desktop room export.
-- **No model spoofing**: We do not silently switch models under rate limits. The declared models in `mandates/` match `factory/config.py` and are preserved during retries.
+## 2. Files that matter
 
-### What Has Already Been Completed
-1. **Repository Architecture & Packaging**:
-   - `pyproject.toml` with `uv` workspace integration and Hatchling package configuration (`factory`).
-   - CLI entrypoints: `factory-planner`, `factory-builder`, `factory-reviewer` as well as root-level wrappers (`planner.py`, `builder.py`, `reviewer.py`).
-2. **Resilient Google ADK Adapter (`factory/adapter.py`)**:
-   - Custom `ResilientGoogleADKAdapter` subclassing `GoogleADKAdapter`.
-   - Built-in inter-turn pacing throttle (`FACTORY_TURN_DELAY`) to avoid burst rate limits.
-   - Exponential backoff with random jitter on HTTP 429 (`ResourceExhausted`) and 503 errors.
-   - Guarantees that the declared model identity (`gemini-3.8-flash` / `gemini-3.8-flash-lite`) is strictly preserved across all retries.
-3. **Mandates (`mandates/`)**:
-   - Fully generic operational mandates for `@Planner`, `@Builder`, and `@Reviewer`.
-   - Verified 100% clean of all track vocabulary tokens (Gate 4 compliant).
-   - Required `Harness: Google ADK` and `Model: gemini-...` headers declared (Gate 1 compliant).
-   - Compatibility aliases (`geminiplanner.md`, `geminibuilder.md`, `geminireviewer.md`) provided for flexible Band Desktop naming.
-4. **Stage Scaffolding (`stage-1/` through `stage-4/`)**:
-   - Clean, honest container contracts: each stage directory has a valid `Dockerfile` and `RUN.md` specifying execution commands, port bindings (`8080`), and environment requirements.
-5. **Verification & Audit Tooling**:
-   - `scripts/run_checks.py`: Comprehensive offline integrity scanner mirroring the official `harness check`.
-   - `scripts/export_room_guide.md`: Step-by-step room evidence export guide.
+`FACTORY.md` (judged) · `mandates/` (judged; generated — never hand-edit) ·
+`factory/lineups.toml` (seat ↔ role ↔ harness ↔ model) · `factory/mandate_templates/` (role
+text) · `scripts/` (everything you run) · `docs/track-plan.md` (what to verify per stage).
 
----
+## 3. One-time machine setup
 
-## 2. Important Files to Understand First
+Paths must not contain spaces or `:`. The original checkout under `Hackathon - 6:10/` breaks
+`uv sync`; clone to e.g. `~/dark-factory` for real use.
 
-Read these files in the following order before starting any live runs:
-
-1. [`FACTORY.md`](file:///d:/Coding_Work/dark-factory-gemini/FACTORY.md):
-   - The foundational design specification of our dark factory. Explains the three-seat separation of concerns, the Git commit-based handoff protocol, and evidence verification.
-2. [`README.md`](file:///d:/Coding_Work/dark-factory-gemini/README.md):
-   - High-level project overview, CLI invocation instructions, and setup guide.
-3. [`factory/config.py`](file:///d:/Coding_Work/dark-factory-gemini/factory/config.py):
-   - Central model definitions (`DEFAULT_PLANNER_MODEL`, `DEFAULT_BUILDER_MODEL`, `DEFAULT_REVIEWER_MODEL`), seat prompts, and seat definitions.
-4. [`factory/adapter.py`](file:///d:/Coding_Work/dark-factory-gemini/factory/adapter.py):
-   - Rate-limit handling, turn pacing, and `ResilientGoogleADKAdapter` implementation.
-5. [`mandates/README.md`](file:///d:/Coding_Work/dark-factory-gemini/mandates/README.md):
-   - Explains how Band Desktop agent names map to mandate filenames via the harness slug rule.
-6. [`docs/decisions.md`](file:///d:/Coding_Work/dark-factory-gemini/docs/decisions.md):
-   - Strategic analysis of `tablekeeper` vs `pocketful`, model allocation strategy, and risk mitigations.
-
----
-
-## 3. What NOT to Change Unnecessarily
-
-To prevent accidental gate disqualifications:
-
-- ❌ **DO NOT touch the model declarations in `mandates/*.md`** without simultaneously updating `factory/config.py`. They must match exactly.
-- ❌ **DO NOT add track-specific words** (like `booking`, `table`, `seat`, `ledger`, `split`, etc.) to any file in `mandates/` or any prompt in `factory/config.py`. Gate 4 will automatically disqualify the repository if track terms appear in mandates.
-- ❌ **DO NOT write application code in `stage-1/` through `stage-4/` manually**. That code must be authored by the agents running inside Band Desktop.
-- ❌ **DO NOT commit `.env` or `agent_config.yaml` to Git**. They are listed in `.gitignore` and must remain private.
-- ❌ **DO NOT enable `--allow-fallback` during the official competition run**. Strict mode preserves the declared model identity required by Gate 1.
-
----
-
-## 4. Rate-Limit Configuration & Tuning
-
-When running multiple Gemini agents concurrently on free-tier API keys, Google enforces strict rate limits (RPM and TPM). Our `ResilientGoogleADKAdapter` manages this automatically, but you can tune parameters in your `.env` file if needed:
-
-| Environment Variable | Default | Purpose |
-|---|---|---|
-| `FACTORY_TURN_DELAY` | `1.5` | Minimum seconds to wait between consecutive turns to prevent burst requests. |
-| `FACTORY_MAX_RETRIES` | `5` | Maximum retry attempts when a 429 / 503 / ResourceExhausted occurs. |
-| `FACTORY_INITIAL_BACKOFF` | `4.0` | Initial backoff delay (seconds) before the first retry attempt. |
-| `FACTORY_MAX_BACKOFF` | `60.0` | Ceiling delay cap for exponential backoff. |
-
-If you observe frequent 429 logs in your terminals:
-- Increase `FACTORY_TURN_DELAY` to `3.0` or `5.0`.
-- Increase `FACTORY_INITIAL_BACKOFF` to `6.0`.
-- Let the adapter sleep and recover automatically; **do not interrupt the agent process**.
-
----
-
-## 5. Step-by-Step Execution Plan
-
-Follow these exact steps to complete the hackathon run:
-
-### Step 1: Local Environment Preparation
-1. Ensure Python 3.13+ and `uv` are installed.
-2. Ensure Docker Desktop is running locally (`docker info`).
-3. Set up local configuration files:
-   ```bash
-   cp .env.example .env
-   cp agent_config.yaml.example agent_config.yaml
-   ```
-4. Put your Google Gemini API key into `.env`:
-   ```bash
-   GOOGLE_API_KEY="AIzaSy..."
-   ```
-
-### Step 2: BAND Desktop Setup & Seat Registration
-1. Launch **BAND Desktop**.
-2. Create or verify 3 agent seats with the following display names:
-   - **`Planner`**
-   - **`Builder`**
-   - **`Reviewer`**
-3. Copy each agent's **Agent ID** and **API Key** from BAND Desktop into `agent_config.yaml`:
-   ```yaml
-   gemini_planner:
-     agent_id: "0f0720eb-..."
-     api_key: "band_key_..."
-   gemini_builder:
-     agent_id: "1a2b3c4d-..."
-     api_key: "band_key_..."
-   gemini_reviewer:
-     agent_id: "5e6f7a8b-..."
-     api_key: "band_key_..."
-   ```
-4. Create a Band room (e.g. `dark-factory-rehearsal` for practice, or `dark-factory-tablekeeper` for the real run).
-5. Invite all 3 agents into the room.
-
-### Step 3: Run the Toy Track Rehearsal (Dry Run)
-Before doing the real competition run, execute a quick rehearsal on the Toy track to ensure multi-agent communication and handle mentions work end-to-end:
-
-1. Open 3 separate terminal tabs:
-   ```bash
-   # Terminal 1:
-   uv run python planner.py
-
-   # Terminal 2:
-   uv run python builder.py
-
-   # Terminal 3:
-   uv run python reviewer.py
-   ```
-2. Verify all three agents show `Connected to platform` and are listening.
-3. In BAND Desktop, send the kickoff prompt in the room addressing `@Planner`:
-   ```text
-   @Planner Begin factory operation for the Toy track.
-   Implement a minimal HTTP service on port 8080 that returns 200 OK with {"status": "ok"} at /healthz.
-   Coordinate with @Builder to implement in stage-1/ and @Reviewer to verify.
-   Operate with full autonomy.
-   ```
-4. Observe the room:
-   - Check that `@Planner` addresses `@Builder`.
-   - Check that `@Builder` implements the code and addresses `@Reviewer`.
-   - Check that `@Reviewer` runs tests and reports back to `@Planner` and `@Builder`.
-   - Ensure handle mentions (`@[[participant-id]]`) are exchanged in both directions (Gate 2 requirement).
-5. Export the test session from Band Desktop to verify the export process.
-
-### Step 4: The Official Competition Run (`tablekeeper`)
-Once the rehearsal confirms communication and tooling:
-
-1. Create a fresh Band room named **`tablekeeper-factory`**.
-2. Invite `Planner`, `Builder`, and `Reviewer`.
-3. In separate terminals, ensure all 3 agent processes are running:
-   ```bash
-   uv run python planner.py
-   uv run python builder.py
-   uv run python reviewer.py
-   ```
-4. **Dispatch Stage 1**:
-   Copy the specification from [`tablekeeper/spec/stage-1.md`](https://github.com/band-ai/dark-factory-wearedevs/blob/main/tablekeeper/spec/stage-1.md) and paste it into the room addressing `@Planner`:
-   ```text
-   @Planner Begin autonomous dark factory operation for Tablekeeper Stage 1.
-   Here is the complete specification:
-   [PASTE STAGE-1.MD CONTENT HERE]
-   Decompose the requirements, direct @Builder to implement in stage-1/, and direct @Reviewer to independently verify.
-   Do not ask for human input. Advance stages upon verified approval.
-   ```
-5. **Monitor Without Intervening**:
-   - Let the agents execute their plan, create the Dockerfile, write source files, execute test suites, and review.
-   - If the Reviewer reports defects, the Builder will remediate them.
-   - When Stage 1 is approved, dispatch Stage 2 (or have the Planner carry forward from the verified baseline).
-   - Repeat through Stage 4.
-
-### Step 5: Exporting Evidence (`room.json`)
-Immediately after completing the factory run:
-1. In BAND Desktop, open the room settings / menu.
-2. Select **"Download full session"** (do NOT choose filtered).
-3. Save the exported JSON file directly to the root of this repository as:
-   ```text
-   dark-factory-gemini/room.json
-   ```
-4. Check that `room.json` contains the full message history and tool calls.
-
-### Step 6: Final Pre-Submission Validation
-Run the submission readiness scanner:
 ```bash
-uv run python scripts/run_checks.py tablekeeper
+git clone https://github.com/<org>/dark-factory-gemini ~/dark-factory && cd ~/dark-factory && uv sync
+mkdir -p ~/band-work && git clone https://github.com/band-ai/dark-factory-wearedevs ~/band-work/kickoff
+uv venv ~/band-work/.venv --python 3.13
+uv pip install --python ~/band-work/.venv/bin/python -r ~/band-work/kickoff/harness/requirements.txt
+~/band-work/.venv/bin/python -m playwright install chromium
+cp .env.example .env                      # fill GOOGLE_API_KEY (Gemini seats only)
+cp agent_config.yaml.example agent_config.yaml   # Band agent UUID + band_a_ key per Gemini seat
+df -h ~                                   # keep >= 10 GiB free: the first isolated harness run builds a browser image
 ```
 
-If the official hackathon harness repo is available locally:
+## 4. Commands that are always safe
+
 ```bash
-python -m harness check . --track tablekeeper
+uv run python scripts/run_checks.py                         # self-checks, offline
+uv run pytest -q                                            # unit tests
+uv run python scripts/apply_lineup.py --lineup hybrid --dry-run
+band list ; band status --as amaansayydd/implementer        # seat health
+band room list ; band room messages <room-id> --type text   # read a room
 ```
 
-All gates must pass:
-- [x] **Gate 1**: Three mandates with valid `Harness` and `Model` declarations matching room seats.
-- [x] **Gate 2**: Two seats exchanged messages using handles in both directions.
-- [x] **Gate 3**: Stage directories exist with `Dockerfile` and `RUN.md`.
-- [x] **Gate 4**: Zero track vocabulary leakage in `mandates/`.
-- [x] **Gate 5**: Zero committed credentials or API keys.
+## 5. What only Band Desktop (or a human) can do
 
-### Step 7: Commit & Push to GitHub
+- Create seats / Band agents, set a seat's permission mode, sign in.
+- Download the room: room ⋮ → Open in Band → ⋮ → Download → **Download full session**
+  ([docs/record-room.md](record-room.md)). No CLI does this.
+- Record the demo video of the room, a handoff and the result (an eligibility requirement).
+
+## 6. Toy rehearsal
+
 ```bash
-git add stage-1 stage-2 stage-3 stage-4 room.json
-git status  # Double-check that .env and agent_config.yaml are NOT staged!
-git commit -m "feat(submission): autonomous tablekeeper multi-agent factory run and room evidence"
-git push origin main
+scripts/prepare_run.sh toy-r2 claude toy           # fresh repo + seat config + dispatch text
+cp ~/band-work/kickoff/scaffold/* ~/band-work/toy-r2/stage-1/   # optional, per the guide
 ```
 
-Submit the GitHub repository URL (`https://github.com/Pushkar0997/dark-factory-gemini`) to the hackathon submission portal on LabLab.ai.
+Create a room with only you and `@planner` (Band Desktop, or
+`band chat new --as amaansayydd/planner --with amaansayydd`), then send
+`~/band-work/dispatch/toy-r2.md` to the planner (`band room send <room> --mention <planner id> "$(cat …)"`).
+Send nothing else. Check: `scripts/run_checks.py --repo ~/band-work/toy-r2 --track toy --stage all`.
+
+**Rehearsal 1 log (all-Claude):** coordinator added both seats itself and sent a verbatim,
+self-contained HANDOFF with an R1–R14 checklist; implementer committed `e60f551`
+(`toy-stage-1: R1-R14 — …`) and posted a full REVISION. The host disk then filled up (1 GiB
+free) and Docker's image store returned I/O errors; the implementer reported a precise
+blocker without deleting anything, and the coordinator recorded `STAGE 1 OUTCOME: blocked`
+without asking the human — correct dark-factory behaviour. The operator freed ~6 GB of caches,
+restarted Docker, and sent one resume message (allowed: rehearsals are not judged). Result of
+the resumed loop: _fill in_.
+
+## 7. Real run (judged) — do exactly this
+
+1. Decide the lineup. Hybrid needs a working Gemini key; otherwise use `claude` (one-line
+   switch, all mandates re-render). Never change lineup mid-run.
+2. `scripts/prepare_run.sh tk-final <lineup> tablekeeper` — prints what it did.
+3. If `mandates/` changed: `git add mandates && git commit -m "mandates for <lineup>"`.
+4. Hybrid only: in a terminal that stays open,
+   `uv run factory-seat --lineup hybrid --role coordinator` and wait for "connected".
+   Stop the Band Desktop runtime of `gemini-planner` first (`band stop --as amaansayydd/gemini-planner`)
+   so only the Gemini runner answers for that seat.
+5. Fresh room with only you + the coordinator. Send `~/band-work/dispatch/tk-final.md`.
+   **Then send nothing** — no "continue", no hints, no reruns. The coordinator's per-stage
+   `STAGE n OUTCOME` messages are the run's report.
+6. While it runs you may *watch* (`band room messages …`) and run checks on committed
+   revisions locally. Do not commit into `~/band-work/tk-final`.
+
+## 8. After the run — validate, record, submit
+
+```bash
+# per stage, isolated mode (how judging runs)
+uv run python scripts/run_checks.py --repo ~/band-work/tk-final --track tablekeeper --stage 1 --isolated --out ~/band-work/checks/tk-final-s1
+# then walk docs/track-plan.md's probe list for each claimed stage
+
+# record the room (Band console → Download full session), then:
+mv ~/Downloads/<room>.json ~/band-work/tk-final/room.json
+grep -nE "band_a_|sk-|AIza|ghp_|Bearer [A-Za-z0-9]{20}" ~/band-work/tk-final/room.json   # rotate + [REDACTED] anything found
+git -C ~/band-work/tk-final add room.json && git -C ~/band-work/tk-final commit -m "room.json: full session download"
+# delete stage folders that do not claim their stage (only completed stages are submitted)
+
+scripts/assemble_submission.sh ~/band-work/tk-final tablekeeper     # merges band history into this repo
+uv run python scripts/run_checks.py --repo . --track tablekeeper --stage all --isolated
+git push                                                            # never force-push
+scripts/fresh_clone_check.sh https://github.com/<org>/dark-factory-gemini tablekeeper
+```
+
+Then: fill FACTORY.md §11 with measured wall time and spend (`band usage`; Gemini usage
+from AI Studio), confirm README/FACTORY are not placeholders, re-read every mandate for track
+words, submit repo URL + presentation + video on lablab.
+
+## 9. Known problems / risks
+
+- No `GOOGLE_API_KEY` on this machine → hybrid lineup untested; `gemini-3.8-flash` unverified.
+- `gemini-planner` agent has both a Band Desktop Claude Code template and SDK credentials;
+  running both answers twice. Stop the Desktop worker before starting `factory-seat`.
+- `agent_config.yaml` `gemini_builder`/`gemini_reviewer` point at the `claude_builder` /
+  `Claude_revierwer` agents (Claude Code seats). The all-Gemini lineup needs new agents.
+- Disk: 168 GiB volume, ~14 GiB free after cleanup. Every review builds images; seats are told
+  to remove what they build. Check `df -h ~` before the real run.
+- Unused seats in Band Desktop (`claude-builder`, `claude-revierwer`, `gemini-planner`) must
+  not be added to the judged room: every seat in `room.json` needs a mandate file.
