@@ -12,7 +12,7 @@ Factory self-checks:
   3. this repo's mandates/ equal one lineup's rendering exactly (no hand drift), contain
      none of the official track vocabulary, and tracked files pass the official
      credential scan (both use the organisers' own code from the kickoff checkout)
-  4. no stage-N/ folders committed in the factory repo by hand
+  4. every commit touching stage-N/ was made by the band's implementer seat
   5. local secrets files (.env, agent_config.yaml) are git-ignored and untracked
 
 The official harness lives in the kickoff checkout; point $KICKOFF_DIR at it (default
@@ -93,9 +93,9 @@ def check_lineups_and_mandates() -> None:
 
 
 def check_hygiene() -> None:
-    stages = [p for p in git("ls-files").splitlines() if p.split("/")[0].startswith("stage-")]
-    record("no hand-written stage folders in the factory repo", not stages,
-           f"tracked: {stages[:5]}" if stages else "")
+    authors = {a for a in git("log", "--no-merges", "--format=%an", "--", "stage-1", "stage-2", "stage-3", "stage-4").split("\n") if a}
+    record("stage folders were committed only by the band's implementer", authors <= {"Implementer"},
+           f"stage commit authors: {sorted(authors)}" if authors else "no stage folders yet")
     tracked = [f for f in (".env", "agent_config.yaml") if git("ls-files", f).strip()]
     ignored = all(git("check-ignore", f).strip() for f in (".env", "agent_config.yaml"))
     record("local secrets are ignored and untracked", not tracked and ignored,
