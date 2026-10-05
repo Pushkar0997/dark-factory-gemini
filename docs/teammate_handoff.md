@@ -11,8 +11,8 @@ Track: **tablekeeper** ([why](decisions.md#d1--track-tablekeeper)). Judged run l
 | Claude Code seats `Planner`, `Implementer`, `Reviewer` in Band Desktop | configured: instructions = rendered mandates, model pinned `claude-sonnet-5-5`, cwd `~/band-work` |
 | Toy rehearsal 1 (all-Claude, room `add3e832…`, repo `~/band-work/toy-result`) | **4/4 stages approved; verified by operator in isolated mode** (§6). room.json not downloaded yet |
 | Gemini coordinator (`gemini_planner` via `factory-seat`) | **not runnable yet: `.env` has no `GOOGLE_API_KEY`**; model id `gemini-3.8-flash` unverified |
-| Real tablekeeper run (`tk-final`, room `7c5f1e66…`) | **4/4 stages approved by the band; operator isolated re-check: every folder claims its stage** (FACTORY.md §11). room.json download pending |
-| `stage-1..4/`, `room.json` in this repo | merged in from `tk-final` after room.json is downloaded (§8) |
+| Real tablekeeper run (`tk-final`, room `7c5f1e66…`) | **4/4 stages approved by the band; operator isolated re-check: every folder claims its stage** (FACTORY.md §11). room.json committed and merged; fresh-clone check of GitHub `044e87b`: harness check ok, all 4 folders claim their stage (isolated) |
+| `stage-1..4/`, `room.json` in this repo | merged from `tk-final` with the band's history intact |
 
 Known problems: see §9.
 
