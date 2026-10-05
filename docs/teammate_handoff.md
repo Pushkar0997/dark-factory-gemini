@@ -115,6 +115,9 @@ git push                                                            # never forc
 scripts/fresh_clone_check.sh https://github.com/<org>/dark-factory-gemini tablekeeper
 ```
 
+Prove the `Model:` lines: `grep -ho '"model":"[^"]*"' ~/.claude/projects/-Users-*-band-work/*.jsonl | sort | uniq -c`
+(Claude Code seats) and the `factory-seat` start log (Gemini seat) must show only the mandated ids.
+
 Then: fill FACTORY.md §11 with measured wall time and spend (`band usage`; Gemini usage
 from AI Studio), confirm README/FACTORY are not placeholders, re-read every mandate for track
 words, submit repo URL + presentation + video on lablab.

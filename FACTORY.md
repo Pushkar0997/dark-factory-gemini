@@ -59,6 +59,9 @@ runtime template and installs the mandate as its owner instructions; `factory-se
 Gemini seat's model from its mandate, verifies it against the Gemini API before connecting,
 and refuses a different model unless `--allow-fallback` is passed (then it logs `MODEL
 MISMATCH` — a run made that way must not be submitted without re-rendering the mandates).
+After a run, the model actually used is checked, not assumed: Claude Code records it on every
+response (`grep -o '"model":"[^"]*"' ~/.claude/projects/-Users-<you>-band-work/*.jsonl | sort | uniq -c`;
+toy rehearsal 1: only `claude-sonnet-5-5`), and `factory-seat` logs the Gemini model at start.
 
 ## 3. Setup (≈20 minutes)
 
