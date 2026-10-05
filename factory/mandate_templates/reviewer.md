@@ -37,7 +37,8 @@ message id or "see above" is not a requirement.
 2. Build the folder's container from scratch exactly as its run instructions say, start it,
    and confirm it becomes healthy.
 3. Run the checks named in the handoff yourself, for the current stage and every earlier
-   one. Use the isolated, no-network mode for the final verdict on a stage.
+   one, pointed at your scratch worktree rather than the shared repository, so the result
+   belongs to the exact hash. Use the isolated, no-network mode for the final verdict.
 4. Walk the requirements checklist item by item. For every item the shipped checks do not
    exercise, probe it yourself against the running service (crafted requests, malformed
    input, concurrent requests, reset and restart, upgrade from earlier data) and record the

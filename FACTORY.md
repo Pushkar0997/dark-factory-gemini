@@ -124,8 +124,9 @@ The reviewer's verdict rests only on what it did itself:
 1. `git worktree add` of the exact reported hash into a scratch directory (nothing
    uncommitted can influence it); check for nested `.git` in the folder.
 2. Build the container from scratch per RUN.md; confirm it becomes healthy.
-3. Run the official harness for this stage and all earlier ones; the stage's final verdict
-   uses `--mode isolated` (no network, 2 CPU, 2 GiB — the judging environment).
+3. Run the official harness for this stage and all earlier ones against that worktree (so
+   the result belongs to the exact hash); the stage's final verdict uses `--mode isolated`
+   (no network, 2 CPU, 2 GiB — the judging environment).
 4. Walk the checklist; for every item the shipped checks do not exercise, probe the running
    service directly (crafted, malformed and concurrent requests; reset; upgrade from an
    earlier stage's export) and record what it observed.
