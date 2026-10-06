@@ -4,6 +4,9 @@ A generic **coordinator → implementer → reviewer** software factory for
 [Band Desktop](https://band.ai), entered in the WeAreDevelopers × BAND *Dark Factory*
 hackathon on the **`tablekeeper`** track.
 
+🌐 **Live Demo (Stage 4 Tablekeeper)**: **[https://tablekeeper-demo-rxjp.onrender.com](https://tablekeeper-demo-rxjp.onrender.com)**  
+*Live, interactive autonomous Stage 4 reservation service running directly from the Band-generated artifact.*
+
 Seats can run on **Claude Code** (Band Desktop runtimes), **Google ADK / Gemini** (this repo's
 `factory-seat` runner, with sandboxed workspace tools), or a mix. The judged run used the
 **claude** lineup (no Gemini key was available at dispatch); **hybrid** (Gemini coordinator +
@@ -20,8 +23,10 @@ claims its own stage: suite 1 120/120, suite 2 25/25, suite 3 7/7, suite 4 6/6.
   notes became fixes in the next stage.
 - **Time and spend:** 55.7 min of active work and **$25.95** at list prices. Wall time was
   9 h 35 min, because two usage limits and one network outage left the band idle.
-- **Disclosure:** two human "resume" messages were posted after the dispatch. They are quoted
-  exactly in [FACTORY.md §11](FACTORY.md#11-measurements-and-results).
+- **Disclosure:** two human "resume" messages were posted after the dispatch (administrative
+  process-resume messages following API rate-limit and socket drop pauses, with zero technical
+  hints or code edits). They are quoted exactly in [FACTORY.md §11](FACTORY.md#11-measurements-and-results).
+  Stage 1 ran with zero human intervention from dispatch to approval.
 
 | Read | For |
 |---|---|
@@ -64,31 +69,13 @@ uv run python scripts/run_checks.py        # factory self-checks
 
 Full setup, the toy rehearsal and the real run: [docs/teammate_handoff.md](docs/teammate_handoff.md).
 
-## Replit Live Demo Deployment (Stage 4)
+## Public Live Demo (Stage 4 Tablekeeper)
 
-The repository is configured for immediate one-click deployment on [Replit](https://replit.com) to showcase the autonomous **Stage 4 Tablekeeper** application live.
+The autonomous **Stage 4 Tablekeeper** application is publicly accessible and running live at:
 
-> **Competition Note:** Replit is purely the public presentation/demo layer. The competition Docker artifacts (`stage-4/Dockerfile`, `stage-4/RUN.md`) and historical records (`room.json`) remain the immutable source of truth.
+👉 **[https://tablekeeper-demo-rxjp.onrender.com](https://tablekeeper-demo-rxjp.onrender.com)**
 
-### How to Deploy on Replit
-
-1. **Import the Repository**:
-   - In Replit, select **"Create Repl"** → **"Import from GitHub"**.
-   - Paste the repository URL: `https://github.com/Pushkar0997/dark-factory-gemini`.
-2. **Automatic Configuration**:
-   - Replit reads `.replit` and `replit.nix` automatically.
-   - Run command: `python stage-4/app.py`
-   - Port binding: `0.0.0.0:$PORT` (defaults to `8080`).
-   - Dependencies: Standard library Python only + `tzdata` (automatically installed from `requirements.txt`).
-3. **Run Interactive Workspace**:
-   - Click the green **"Run"** button. The server starts and the interactive browser Webview opens to `/`.
-4. **Publish Permanent HTTPS Demo**:
-   - In the top right, click **"Deploy"**.
-   - Choose **Autoscale** (or Reserved VM / Cloud Run).
-   - Ensure the run command is `python stage-4/app.py` and port is `8080`.
-   - Click **"Deploy your Repl"** to receive a public `https://<repl-name>.<user>.replit.app` URL.
-
-### Key Routes & Verification
+### Key Routes & Interactive Webview
 
 | Route | Method | Description |
 |---|---|---|
@@ -101,9 +88,19 @@ The repository is configured for immediate one-click deployment on [Replit](http
 | `/availability` | `GET` | Real-time table slot availability query API |
 | `/static/app.css`, `app.js` | `GET` | Bundled styling and frontend application assets |
 
-Detailed manual and verification curl commands: [docs/replit_deployment.md](docs/replit_deployment.md).
+> **Competition Integrity Note:** The public web demo is purely a presentation layer. The official competition Docker artifacts (`stage-4/Dockerfile`, `stage-4/RUN.md`), Band session logs (`room.json`), and stage directories remain the immutable source of truth.
+
+### Alternative Deployment Options
+
+- **Docker (Competition Reference)**:
+  ```bash
+  cd stage-4 && docker build -t tablekeeper-s4 . && docker run -p 8080:8080 tablekeeper-s4
+  ```
+- **Replit (Optional One-Click Import)**:
+  The repository includes optional Replit configuration (`.replit`, `replit.nix`, `requirements.txt`). To self-host on Replit, import `https://github.com/Pushkar0997/dark-factory-gemini` into Replit and click **Run**. Detailed instructions: [docs/replit_deployment.md](docs/replit_deployment.md).
 
 ## Team
 
 Pushkar Kumar, Amaan Sayyed.
+
 

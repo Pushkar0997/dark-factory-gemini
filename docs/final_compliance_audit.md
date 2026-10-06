@@ -227,13 +227,16 @@ Operator re-validation using the official competition harness in isolated mode (
 
 ## 11. Application & Demo Status
 
-- **Local Container Execution**: Each stage contains a self-contained `Dockerfile` and `RUN.md`. Verified that containers bind to `0.0.0.0:$PORT` and require no external services or DB setup.
-- **Replit Live Demo Layer**:
-  - Configured via `.replit`, `replit.nix`, and `requirements.txt`.
-  - Entrypoint: `python stage-4/app.py`
-  - Binds to `0.0.0.0:8080` (or dynamic `$PORT`).
-  - Serving the complete interactive reservation Webview: `/` (home grid), `/signup`, `/login`, `/lookup`, and `/health`.
-  - Complete operational instructions documented in [`docs/replit_deployment.md`](replit_deployment.md).
+- **Primary Live Public Demo (Render)**:
+  - Deployed live at: **`https://tablekeeper-demo-rxjp.onrender.com`**
+  - Serves the autonomous, Band-generated **Stage 4 Tablekeeper** application directly.
+  - Interactive routes verified: `/` (availability grid and booking form), `/signup`, `/login`, `/lookup`, `/health` (HTTP 200 `{"status": "ok"}`), `/restaurants`, `/availability`.
+- **Local Container Execution**:
+  - Each stage contains a self-contained `Dockerfile` and `RUN.md`. Verified that containers bind to `0.0.0.0:$PORT` and require no external services or DB setup.
+- **Alternative Cloud Deployment (Replit)**:
+  - Decoupled configuration via `.replit`, `replit.nix`, and `requirements.txt`.
+  - Enables optional one-click self-hosting in an interactive cloud workspace without touching stage-N judged code.
+  - Operational instructions documented in [`docs/replit_deployment.md`](replit_deployment.md).
 
 ---
 
@@ -269,8 +272,8 @@ To remain 100% truthful, compliant, and defensible before hackathon judges, our 
 - [x] `room.json` is the full unpruned session download (`scope: full`).
 - [x] Credential scan passes with 0 leaks in `room.json` or tracked files.
 - [x] Mandates match the actual judged lineup and contain zero track vocabulary.
-- [x] Gates 1, 2, and 4 are completely verified and pass.
-- [x] Replit deployment files are in place and decoupled from judged code.
+- [x] Primary live demo is deployed and verified on Render (`https://tablekeeper-demo-rxjp.onrender.com`).
+- [x] Alternative Replit deployment files are in place and decoupled from judged code.
 - [x] All relative markdown links resolve correctly.
 - [x] README and FACTORY.md honestly disclose spend, timing, models, and resume messages.
 

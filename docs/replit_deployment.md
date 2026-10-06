@@ -1,12 +1,13 @@
 # Replit Deployment Guide — Tablekeeper Stage 4 Demo
 
-This guide provides step-by-step instructions for deploying the **Stage 4 Tablekeeper** application on [Replit](https://replit.com) as a public live demo.
+> 🚀 **Current Active Live Demo**: The primary live demo is deployed on Render at **[https://tablekeeper-demo-rxjp.onrender.com](https://tablekeeper-demo-rxjp.onrender.com)**.
+> This guide documents the optional / alternative one-click deployment path on Replit for evaluators or developers wishing to run an isolated instance in a cloud workspace.
 
 ---
 
 ## 1. Architectural Overview & Boundaries
 
-- **Role of Replit**: Replit serves solely as the public demo and presentation host for hackathon evaluators and teammates.
+- **Role of Replit**: Replit provides an optional, interactive cloud IDE and self-hosting path for hackathon evaluators. The active public deployment is hosted on Render.
 - **Competition Integrity**: The official judged competition artifacts (`stage-4/Dockerfile`, `stage-4/RUN.md`, `room.json`, mandates) are unchanged and remain the immutable source of truth.
 - **Application Characteristics**:
   - **Directory Served**: `stage-4/`
