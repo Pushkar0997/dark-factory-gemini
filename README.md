@@ -27,6 +27,7 @@ claims its own stage: suite 1 120/120, suite 2 25/25, suite 3 7/7, suite 4 6/6.
 |---|---|
 | [FACTORY.md](FACTORY.md) | how the factory works, how to stand it up, costs, failure handling |
 | [mandates/](mandates/) | one mandate per seat, generic, with its harness and model |
+| [docs/final_compliance_audit.md](docs/final_compliance_audit.md) | complete hackathon-rule compliance audit and evidence trail |
 | [docs/teammate_handoff.md](docs/teammate_handoff.md) | current status, exact commands, run book |
 | [docs/decisions.md](docs/decisions.md) | track choice and other decisions, with evidence |
 | `stage-1/` … `stage-4/`, `room.json` | **produced by the band** in the judged run and merged in; never hand-written |

@@ -22,9 +22,9 @@ This guide provides step-by-step instructions for deploying the **Stage 4 Tablek
 
 | File | Purpose |
 |---|---|
-| [`.replit`](file:///d:/Coding_Work/dark-factory-gemini/.replit) | Declares Python 3.12 module, run command (`python stage-4/app.py`), port mapping (`8080` -> `80`), and deployment target. |
-| [`replit.nix`](file:///d:/Coding_Work/dark-factory-gemini/replit.nix) | Declares Nix package dependencies (`python312Full`, `tzdata`). |
-| [`requirements.txt`](file:///d:/Coding_Work/dark-factory-gemini/requirements.txt) | Pinned `tzdata>=2024.1` for pip installation upon repo import. |
+| [`.replit`](../.replit) | Declares Python 3.12 module, run command (`python stage-4/app.py`), port mapping (`8080` -> `80`), and deployment target. |
+| [`replit.nix`](../replit.nix) | Declares Nix package dependencies (`python312Full`, `tzdata`). |
+| [`requirements.txt`](../requirements.txt) | Pinned `tzdata>=2024.1` for pip installation upon repo import. |
 
 ---
 
